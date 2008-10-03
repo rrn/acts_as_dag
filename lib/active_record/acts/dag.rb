@@ -114,14 +114,14 @@ module ActiveRecord
           descendant_type.new(:ancestor_id => id, :descendant_id => id, :distance => 0).save!
         end
         # END CALLBACKS
-        
+
         # LINKING FUNCTIONS
-        
+
         # creates a single link in the given link_type's link table between parent and
         # child object ids and creates the appropriate entries in the descendant table
         def link(parent, child, metadata = {})
           
-          #Log.call_stack {"link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"}
+          Log.call_stack {"link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"}
 
           # Check if parent and child have id's
           raise "Parent has no ID" if parent.id.nil?
@@ -177,11 +177,11 @@ module ActiveRecord
         # breaks a single link in the given hierarchy_link_table between parent and
         # child object id. Updates the appropriate Descendants table entries
         def unlink(parent, child)
-#          parent_name = parent ? parent.name : 'Root'
-#          child_name = child.name
+          parent_name = parent ? parent.name : 'Root'
+          child_name = child.name
 
           descendant_table_string = descendant_type.to_s
-          #Log.call_stack "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
+          Log.call_stack "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
 
           # Raise an exception if there is no child
           raise "Child cannot be nil when deleting a category_link" unless child
@@ -224,7 +224,7 @@ module ActiveRecord
 
             if events.blank?
               destroy
-#              Log.info "Deleted RRN #{self.class} ##{id} (#{name}) during garbage collection"
+              Log.info "Deleted RRN #{self.class} ##{id} (#{name}) during garbage collection"
               return true
             else
               return false
@@ -239,21 +239,21 @@ module ActiveRecord
         end
 
         def save!
-#          parent_name = parent ? parent.name : 'root'
-#          parent_id_string = parent ? parent_id : 'none'    
-#          link_description = "linking #{parent.class} ##{parent_id_string} #{parent_name} (parent) to #{child.class} ##{child_id} #{child.name} (child)"
+          parent_name = parent ? parent.name : 'root'
+          parent_id_string = parent ? parent_id : 'none'    
+          link_description = "linking #{parent.class} ##{parent_id_string} #{parent_name} (parent) to #{child.class} ##{child_id} #{child.name} (child)"
 
           # No need to save if we find an existing parent-child link since the link contains no information other than that which was used to find the existing record
           if replace(find_duplicate(:parent_id => parent_id, :child_id => child_id))
-            #Log.info "Found existing #{self.class} ##{id} #{link_description}"
+            Log.info "Found existing #{self.class} ##{id} #{link_description}"
           end
 
           begin
             super
-            #Log.info "Created #{self.class} ##{id} #{link_description}"
+            Log.info "Created #{self.class} ##{id} #{link_description}"
             inform_parents_and_children
           rescue => exception
-            #SiteItemLog.error "RRN #{self.class} ##{id} #{link_description} - Couldn't save because #{exception.message}"
+            SiteItemLog.error "RRN #{self.class} ##{id} #{link_description} - Couldn't save because #{exception.message}"
           end
         end
         
@@ -268,19 +268,19 @@ module ActiveRecord
       
       module DescendantClassInstanceMethods
         def save!
-          #descendant_description = "linking #{ancestor.class} ##{ancestor_id} #{ancestor.name} (ancestor) to #{descendant.class} ##{descendant_id} #{descendant.name} (descendant)"
+          descendant_description = "linking #{ancestor.class} ##{ancestor_id} #{ancestor.name} (ancestor) to #{descendant.class} ##{descendant_id} #{descendant.name} (descendant)"
 
           # No need to save if we find an existing ancestor-descendant link since the link contains no information other than that which was used to find the existing record
           if replace(find_duplicate(:ancestor_id => ancestor_id, :descendant_id => descendant_id))
-            #Log.info("Found existing #{self.class} ##{id} #{descendant_description}")
+            Log.info("Found existing #{self.class} ##{id} #{descendant_description}")
             return
           end
 
           begin
             super
-            #Log.info("Created #{self.class} ##{id} #{descendant_description}")
+            Log.info("Created #{self.class} ##{id} #{descendant_description}")
           rescue => exception
-            #SiteItemLog.error "RRN #{self.class} ##{id} #{descendant_description} - Couldn't save because #{exception.message}"
+            SiteItemLog.error "RRN #{self.class} ##{id} #{descendant_description} - Couldn't save because #{exception.message}"
           end    
         end        
       end 
