@@ -108,6 +108,113 @@ module ActiveRecord
           return parent
         end
         
+        # Returns the portion of this category's name that is not present in any of it's parents
+        def unique_name_portion
+          unique_portion = name.split
+          for parent in parents
+            for word in parent.name.split
+              unique_portion.delete(word)
+            end
+          end
+
+          return unique_portion.empty? ? nil : unique_portion.join(' ')
+        end
+        
+        # Return all categories whose name contains the all the words in +string+
+        # Options:
+        #   :exclude_exact_match    - cause any categories whose name matches the search string exactly
+        #   :exclude                - ensures that the single record, or array of records passed to not appear in the results
+        def self.find_matches(string, options = {})
+          # Create a 'similar to' condition for each word in the string
+          conditions = Array.new
+          for word in string.split
+            conditions << "name SIMILAR TO '(% )*#{word}( %)*'"
+          end
+
+          # Optionally Exclude records with a name exactly matching the search string
+          conditions << "name != '#{string}'" if options[:exclude_exact_match]
+
+          # Optionally exclude results from the return values ( eg. if you don't want to return the item you're finding matches for )
+          if options[:exclude].is_a?(self.class)
+            conditions << "id != #{options[:exclude].id}"
+          elsif options[:exclude].is_a?(Array) && !options[:exclude].empty?
+            exclusion_list = options[:exclude].collect{|record| record.id}
+            conditions << "id NOT IN (#{exclusion_list.join(',')})"
+          end
+
+          return find(:all, :conditions => conditions.join(' AND '))
+        end
+        
+        # Returns true if the category's descendants include *self*
+        # Excludes self from list of results if params[:exclude_self] != false
+        def descends_from?(category, options = {})
+          sql = "ancestor_id = #{category.id} AND descendant_id = #{self.id}"
+          sql << " AND distance > 0" if options[:exclude_self]
+          descendant_type.count(:conditions => sql) > 0 ? true : false
+        end
+        
+        # Removes category_being_cleaned's children that are descendants of another one of category_being_cleaned's children
+        # Typically used on category1 after category2 is added as a child without first checking if category1 has a child that should be the parent of category2
+        def self.remove_indirect_descendant_children(category_being_cleaned)
+          current_child_list = category_being_cleaned.children
+          for current_child in current_child_list
+            Log.debug {"Checking if #{category_being_cleaned.name} has children that are descendants of #{current_child.name}"}
+            for other_child in current_child_list
+              # remove the spurious child of *self*, exclude self because the function returns self as a descendant with distance 0
+              if other_child.descends_from?(current_child, :exclude_self => true)
+                Log.debug {"#{category_being_cleaned.name} contains #{other_child.name} which is a descendant of #{category_being_cleaned.name}'s child #{current_child.name}"}
+                category_being_cleaned.remove_child(other_child)
+                # remove the child from the list of children we need to check because it is no longer a child
+                current_child_list.delete(other_child)
+              end
+            end
+          end
+        end
+
+        # Reorganizes any child categories of category_being_cleaned, checking for categories that should not be direct descendants and moving them under the appropriate ancestor category, then recursively calls self on the category gaining the errant child
+        def self.reorganize_indirect_descendant_children(category_being_cleaned, options = {})
+          Log.call_stack {"reorganize_indirect_descendant_children(item_type_being_cleaned = #{category_being_cleaned.name})"}
+          if category_being_cleaned.children_have_changed? or options[:force]
+            children = category_being_cleaned.children
+            for current_child in children
+              for other_child in children
+                if current_child.should_descend_from?(other_child)
+                  Log.info {"#{current_child.name} is being moved under #{other_child.name} because of a name-match"}
+                  children.delete(current_child)
+                  category_being_cleaned.remove_child(current_child)
+                  other_child.add_child(current_child)
+                  reorganize_indirect_descendant_children(other_child)
+                end
+              end
+            end
+          else
+            Log.info {"Children of #{category_being_cleaned.name} have not changed, skipping reorganize_indirect_descendant_children"}
+          end
+        end
+
+        # Checks if self should descend from possible_ancestor based on name matching
+        # Returns true if self contains all the words from ancestor, but has words that are not contained in ancestor
+        def should_descend_from?(ancestor)
+          ancestor_name_words = ancestor.name.split
+          descendant_name_words = self.name.split
+
+          # Delete all the words contained in the ancestor's name from the descendant's name
+          # Return false, if one of the words is not contained in the descendant's name
+          for word in ancestor_name_words
+            unless descendant_name_words.delete(word)
+              return false
+            end
+          end
+
+          # Check if there are still words remaining in the list of descendant words
+          # If there are, it means that the descendant name contains all the words from the ancestor, plus some others, and is therefore a descendant
+          if descendant_name_words.empty?
+            return false
+          else
+            return true
+          end
+        end
+        
         private
         # CALLBACKS
         def initialize_links
@@ -183,8 +290,8 @@ module ActiveRecord
         # breaks a single link in the given hierarchy_link_table between parent and
         # child object id. Updates the appropriate Descendants table entries
         def unlink(parent, child)
-#          parent_name = parent ? parent.name : 'Root'
-#          child_name = child.name
+          #          parent_name = parent ? parent.name : 'Root'
+          #          child_name = child.name
 
           descendant_table_string = descendant_type.to_s
           #Log.call_stack "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
@@ -212,31 +319,31 @@ module ActiveRecord
         # END LINKING FUNCTIONS
         
         # GARBAGE COLLECTION
-          # Remove all entries from this object's table that are not associated in some way with an item
-          def self.garbage_collect
-            class_name = self.class.to_s.tableize
-            root_locations = self.class.find(:all, :conditions => "#{class_name}_links.parent_id IS NULL", :include => "#{class_name}_parents")
-            for root_location in root_locations
-              root_location.garbage_collect
-            end
+        # Remove all entries from this object's table that are not associated in some way with an item
+        def self.garbage_collect
+          class_name = self.class.to_s.tableize
+          root_locations = self.class.find(:all, :conditions => "#{class_name}_links.parent_id IS NULL", :include => "#{class_name}_parents")
+          for root_location in root_locations
+            root_location.garbage_collect
+          end
+        end
+
+        def garbage_collect
+          # call garbage collect on all children,
+          # Return false if any of those are unsuccessful, thus cancelling the recursion chain
+          for child in children
+            return false unless child.garbage_collect
           end
 
-          def garbage_collect
-            # call garbage collect on all children,
-            # Return false if any of those are unsuccessful, thus cancelling the recursion chain
-            for child in children
-              return false unless child.garbage_collect
-            end
-
-            if events.blank?
-              destroy
-#              Log.info "Deleted RRN #{self.class} ##{id} (#{name}) during garbage collection"
-              return true
-            else
-              return false
-            end
+          if events.blank?
+            destroy
+            #              Log.info "Deleted RRN #{self.class} ##{id} (#{name}) during garbage collection"
+            return true
+          else
+            return false
           end
-          # END GARBAGE COLLECTION
+        end
+        # END GARBAGE COLLECTION
       end 
       
       module LinkClassInstanceMethods
@@ -245,9 +352,9 @@ module ActiveRecord
         end
 
         def save!
-#          parent_name = parent ? parent.name : 'root'
-#          parent_id_string = parent ? parent_id : 'none'    
-#          link_description = "linking #{parent.class} ##{parent_id_string} #{parent_name} (parent) to #{child.class} ##{child_id} #{child.name} (child)"
+          #          parent_name = parent ? parent.name : 'root'
+          #          parent_id_string = parent ? parent_id : 'none'
+          #          link_description = "linking #{parent.class} ##{parent_id_string} #{parent_name} (parent) to #{child.class} ##{child_id} #{child.name} (child)"
 
           # No need to save if we find an existing parent-child link since the link contains no information other than that which was used to find the existing record
           if replace(find_duplicate(:parent_id => parent_id, :child_id => child_id))
