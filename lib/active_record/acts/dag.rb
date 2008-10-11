@@ -7,13 +7,15 @@ module ActiveRecord
 
       module ClassMethods
         def acts_as_dag(options = {})
-          
+
           link_class = "#{self.name}Link"
           descendant_class = "#{self.name}Descendant"
-          
+
           class_eval <<-EOV
             class ::#{link_class} < ActiveRecord::Base
               include ActiveRecord::Acts::DAG::LinkClassInstanceMethods
+
+              acts_as_replaceable :conditions => [:child_id, :parent_id]
 
               belongs_to :parent, :class_name => '#{self.name}', :foreign_key => 'parent_id'
               belongs_to :child, :class_name => '#{self.name}', :foreign_key => 'child_id'
@@ -21,7 +23,9 @@ module ActiveRecord
 
             class ::#{descendant_class} < ActiveRecord::Base
               include ActiveRecord::Acts::DAG::DescendantClassInstanceMethods
-              
+
+              acts_as_replaceable :conditions => [:ancestor_id, :descendant_id]
+
               belongs_to :ancestor, :class_name => '#{self.name}', :foreign_key => "ancestor_id"
               belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => "descendant_id"
             end
@@ -36,7 +40,7 @@ module ActiveRecord
               @create_descendants = params.delete(:create_descendants)
               super(params)
             end
-            
+
             def acts_as_dag_class
               ::#{self.name}
             end
@@ -64,6 +68,70 @@ module ActiveRecord
             has_many :descendant_links, :class_name => '#{descendant_class}', :foreign_key => 'ancestor_id'
             has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
           EOV
+
+          # Removes category_being_cleaned's children that are descendants of another one of category_being_cleaned's children
+          # Typically used on category1 after category2 is added as a child without first checking if category1 has a child that should be the parent of category2
+          def self.remove_indirect_descendant_children(category_being_cleaned)
+            current_child_list = category_being_cleaned.children
+            for current_child in current_child_list
+              Log.debug {"Checking if #{category_being_cleaned.name} has children that are descendants of #{current_child.name}"}
+              for other_child in current_child_list
+                # remove the spurious child of *self*, exclude self because the function returns self as a descendant with distance 0
+                if other_child.descends_from?(current_child, :exclude_self => true)
+                  Log.debug {"#{category_being_cleaned.name} contains #{other_child.name} which is a descendant of #{category_being_cleaned.name}'s child #{current_child.name}"}
+                  category_being_cleaned.remove_child(other_child)
+                  # remove the child from the list of children we need to check because it is no longer a child
+                  current_child_list.delete(other_child)
+                end
+              end
+            end
+          end
+
+          # Reorganizes any child categories of category_being_cleaned, checking for categories that should not be direct descendants and moving them under the appropriate ancestor category, then recursively calls self on the category gaining the errant child
+          def self.reorganize_indirect_descendant_children(category_being_cleaned, options = {})
+            Log.call_stack {"reorganize_indirect_descendant_children(item_type_being_cleaned = #{category_being_cleaned.name})"}
+            if category_being_cleaned.children_have_changed? or options[:force]
+              children = category_being_cleaned.children
+              for current_child in children
+                for other_child in children
+                  if current_child.should_descend_from?(other_child)
+                    Log.info {"#{current_child.name} is being moved under #{other_child.name} because of a name-match"}
+                    children.delete(current_child)
+                    category_being_cleaned.remove_child(current_child)
+                    other_child.add_child(current_child)
+                    reorganize_indirect_descendant_children(other_child)
+                  end
+                end
+              end
+            else
+              Log.info {"Children of #{category_being_cleaned.name} have not changed, skipping reorganize_indirect_descendant_children"}
+            end
+          end
+
+          # Return all categories whose name contains the all the words in +string+
+          # Options:
+          #   :exclude_exact_match    - cause any categories whose name matches the search string exactly
+          #   :exclude                - ensures that the single record, or array of records passed to not appear in the results
+          def self.find_matches(string, options = {})
+            # Create a 'similar to' condition for each word in the string
+            conditions = Array.new
+            for word in string.split
+              conditions << "name SIMILAR TO '(% )*#{word}( %)*'"
+            end
+
+            # Optionally Exclude records with a name exactly matching the search string
+            conditions << "name != '#{string}'" if options[:exclude_exact_match]
+
+            # Optionally exclude results from the return values ( eg. if you don't want to return the item you're finding matches for )
+            if options[:exclude].is_a?(self.class)
+              conditions << "id != #{options[:exclude].id}"
+            elsif options[:exclude].is_a?(Array) && !options[:exclude].empty?
+              exclusion_list = options[:exclude].collect{|record| record.id}
+              conditions << "id NOT IN (#{exclusion_list.join(',')})"
+            end
+
+            return find(:all, :conditions => conditions.join(' AND '))
+          end
         end
       end
 
@@ -73,7 +141,7 @@ module ActiveRecord
       # the first in the list of all chapters.
       module InstanceMethods
         attr_accessor :parents_have_changed, :children_have_changed
-        
+
         # True if a link has been created to this object specifying it as the parent
         def children_have_changed?
           @children_have_changed
@@ -83,7 +151,7 @@ module ActiveRecord
         def parents_have_changed?
           @parents_have_changed
         end
-        
+
         # Adds a category as a parent of this category (self)
         def add_parent(parent, metadata = {})
           link(parent, self, metadata)
@@ -107,7 +175,7 @@ module ActiveRecord
           unlink(parent, self)
           return parent
         end
-        
+
         # Returns the portion of this category's name that is not present in any of it's parents
         def unique_name_portion
           unique_portion = name.split
@@ -119,77 +187,13 @@ module ActiveRecord
 
           return unique_portion.empty? ? nil : unique_portion.join(' ')
         end
-        
-        # Return all categories whose name contains the all the words in +string+
-        # Options:
-        #   :exclude_exact_match    - cause any categories whose name matches the search string exactly
-        #   :exclude                - ensures that the single record, or array of records passed to not appear in the results
-        def self.find_matches(string, options = {})
-          # Create a 'similar to' condition for each word in the string
-          conditions = Array.new
-          for word in string.split
-            conditions << "name SIMILAR TO '(% )*#{word}( %)*'"
-          end
 
-          # Optionally Exclude records with a name exactly matching the search string
-          conditions << "name != '#{string}'" if options[:exclude_exact_match]
-
-          # Optionally exclude results from the return values ( eg. if you don't want to return the item you're finding matches for )
-          if options[:exclude].is_a?(self.class)
-            conditions << "id != #{options[:exclude].id}"
-          elsif options[:exclude].is_a?(Array) && !options[:exclude].empty?
-            exclusion_list = options[:exclude].collect{|record| record.id}
-            conditions << "id NOT IN (#{exclusion_list.join(',')})"
-          end
-
-          return find(:all, :conditions => conditions.join(' AND '))
-        end
-        
         # Returns true if the category's descendants include *self*
         # Excludes self from list of results if params[:exclude_self] != false
         def descends_from?(category, options = {})
           sql = "ancestor_id = #{category.id} AND descendant_id = #{self.id}"
           sql << " AND distance > 0" if options[:exclude_self]
           descendant_type.count(:conditions => sql) > 0 ? true : false
-        end
-        
-        # Removes category_being_cleaned's children that are descendants of another one of category_being_cleaned's children
-        # Typically used on category1 after category2 is added as a child without first checking if category1 has a child that should be the parent of category2
-        def self.remove_indirect_descendant_children(category_being_cleaned)
-          current_child_list = category_being_cleaned.children
-          for current_child in current_child_list
-            Log.debug {"Checking if #{category_being_cleaned.name} has children that are descendants of #{current_child.name}"}
-            for other_child in current_child_list
-              # remove the spurious child of *self*, exclude self because the function returns self as a descendant with distance 0
-              if other_child.descends_from?(current_child, :exclude_self => true)
-                Log.debug {"#{category_being_cleaned.name} contains #{other_child.name} which is a descendant of #{category_being_cleaned.name}'s child #{current_child.name}"}
-                category_being_cleaned.remove_child(other_child)
-                # remove the child from the list of children we need to check because it is no longer a child
-                current_child_list.delete(other_child)
-              end
-            end
-          end
-        end
-
-        # Reorganizes any child categories of category_being_cleaned, checking for categories that should not be direct descendants and moving them under the appropriate ancestor category, then recursively calls self on the category gaining the errant child
-        def self.reorganize_indirect_descendant_children(category_being_cleaned, options = {})
-          Log.call_stack {"reorganize_indirect_descendant_children(item_type_being_cleaned = #{category_being_cleaned.name})"}
-          if category_being_cleaned.children_have_changed? or options[:force]
-            children = category_being_cleaned.children
-            for current_child in children
-              for other_child in children
-                if current_child.should_descend_from?(other_child)
-                  Log.info {"#{current_child.name} is being moved under #{other_child.name} because of a name-match"}
-                  children.delete(current_child)
-                  category_being_cleaned.remove_child(current_child)
-                  other_child.add_child(current_child)
-                  reorganize_indirect_descendant_children(other_child)
-                end
-              end
-            end
-          else
-            Log.info {"Children of #{category_being_cleaned.name} have not changed, skipping reorganize_indirect_descendant_children"}
-          end
         end
 
         # Checks if self should descend from possible_ancestor based on name matching
@@ -214,26 +218,26 @@ module ActiveRecord
             return true
           end
         end
-        
+
         private
         # CALLBACKS
         def initialize_links
           raise 'initialized links for existing record' if @has_been_replaced
           link_type.new(:parent_id => nil, :child_id => id).save! unless @create_links.eql? false
         end
-        
+
         def initialize_descendants
           raise 'initialized descendants for existing record' if @has_been_replaced
           descendant_type.new(:ancestor_id => id, :descendant_id => id, :distance => 0).save! unless @create_descendants.eql? false
         end
         # END CALLBACKS
-        
+
         # LINKING FUNCTIONS
-        
+
         # creates a single link in the given link_type's link table between parent and
         # child object ids and creates the appropriate entries in the descendant table
         def link(parent, child, metadata = {})
-          
+
           #Log.call_stack {"link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"}
 
           # Check if parent and child have id's
@@ -244,12 +248,12 @@ module ActiveRecord
           new_link = link_type.new(:parent => parent, :child => child)
           new_link.attributes = metadata
           new_link.save!
-          
+
           # If the link is invalid we should not continue
           unless new_link.valid?
             Log.info {"Skipping #{descendant_type} update because the link #{link_type} ##{new_link.id} was invalid"}
-            return 
-          end          
+            return
+          end
 
           # Return unless the save created a new database entry and was not replaced with an existing database entry.
           # If we found one that already exists, we can assume that the proper descendants already exist too
@@ -259,8 +263,8 @@ module ActiveRecord
           end
 
           # If we have been passed a parent, find and destroy any exsting links from nil (root) to the child as it can no longer be a top-level node
-          unlink(nil, child) if parent          
-          
+          unlink(nil, child) if parent
+
           # update descendants listing by creating links from the parent and its
           # ancestors to the child and its descendants
 
@@ -279,7 +283,7 @@ module ActiveRecord
               descendant_link.descendant_id = child_descendant_link.descendant_id
               # get the distance as the sum of the distance from the ancestor to the
               # parent and from the child to the descendant
-              descendant_link.distance = parent_ancestor_link.distance + child_descendant_link.distance + 1 
+              descendant_link.distance = parent_ancestor_link.distance + child_descendant_link.distance + 1
 
               descendant_link.attributes = metadata
               descendant_link.save!
@@ -317,7 +321,7 @@ module ActiveRecord
           descendant_type.delete_all("ancestor_id #{parent_ancestor_id_condition} AND descendant_id #{child_descendant_id_condition}")
         end
         # END LINKING FUNCTIONS
-        
+
         # GARBAGE COLLECTION
         # Remove all entries from this object's table that are not associated in some way with an item
         def self.garbage_collect
@@ -344,10 +348,10 @@ module ActiveRecord
           end
         end
         # END GARBAGE COLLECTION
-      end 
-      
+      end
+
       module LinkClassInstanceMethods
-        def validate    
+        def validate
           errors.add_to_base("Circular #{self.class} cannot be created.") if parent_id == child_id
         end
 
@@ -369,7 +373,7 @@ module ActiveRecord
             #SiteItemLog.error "RRN #{self.class} ##{id} #{link_description} - Couldn't save because #{exception.message}"
           end
         end
-        
+
         private
 
         # Update the parent and child informing them that their respective links have been altered
@@ -377,8 +381,8 @@ module ActiveRecord
           child.parents_have_changed = true
           parent.children_have_changed = true
         end
-      end 
-      
+      end
+
       module DescendantClassInstanceMethods
         def save!
           #descendant_description = "linking #{ancestor.class} ##{ancestor_id} #{ancestor.name} (ancestor) to #{descendant.class} ##{descendant_id} #{descendant.name} (descendant)"
@@ -394,9 +398,9 @@ module ActiveRecord
             #Log.info("Created #{self.class} ##{id} #{descendant_description}")
           rescue => exception
             #SiteItemLog.error "RRN #{self.class} ##{id} #{descendant_description} - Couldn't save because #{exception.message}"
-          end    
-        end        
-      end 
+          end
+        end
+      end
     end
   end
 end
