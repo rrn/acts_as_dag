@@ -176,6 +176,16 @@ module ActiveRecord
           return parent
         end
 
+#        # Returns the name of this object, and its parent objects
+#        def full_name
+#          unique_portion = name.split
+#          for parent in parents
+#            for word in parent.name.split
+#              unique_portion.delete(word)
+#            end
+#          end
+#        end
+
         # Returns the portion of this category's name that is not present in any of it's parents
         def unique_name_portion
           unique_portion = name.split
