@@ -74,11 +74,11 @@ module ActiveRecord
           def self.remove_indirect_descendant_children(category_being_cleaned)
             current_child_list = category_being_cleaned.children
             for current_child in current_child_list
-              Log.debug {"Checking if #{category_being_cleaned.name} has children that are descendants of #{current_child.name}"}
+              logger.debug {"Checking if #{category_being_cleaned.name} has children that are descendants of #{current_child.name}"}
               for other_child in current_child_list
                 # remove the spurious child of *self*, exclude self because the function returns self as a descendant with distance 0
                 if other_child.descends_from?(current_child, :exclude_self => true)
-                  Log.debug {"#{category_being_cleaned.name} contains #{other_child.name} which is a descendant of #{category_being_cleaned.name}'s child #{current_child.name}"}
+                  logger.debug {"#{category_being_cleaned.name} contains #{other_child.name} which is a descendant of #{category_being_cleaned.name}'s child #{current_child.name}"}
                   category_being_cleaned.remove_child(other_child)
                   # remove the child from the list of children we need to check because it is no longer a child
                   current_child_list.delete(other_child)
@@ -89,13 +89,13 @@ module ActiveRecord
 
           # Reorganizes any child categories of category_being_cleaned, checking for categories that should not be direct descendants and moving them under the appropriate ancestor category, then recursively calls self on the category gaining the errant child
           def self.reorganize_indirect_descendant_children(category_being_cleaned, options = {})
-            Log.call_stack {"reorganize_indirect_descendant_children(item_type_being_cleaned = #{category_being_cleaned.name})"}
+            logger.call_stack {"reorganize_indirect_descendant_children(item_type_being_cleaned = #{category_being_cleaned.name})"}
             if category_being_cleaned.children_have_changed? or options[:force]
               children = category_being_cleaned.children
               for current_child in children
                 for other_child in children
                   if current_child.should_descend_from?(other_child)
-                    Log.info {"#{current_child.name} is being moved under #{other_child.name} because of a name-match"}
+                    logger.info {"#{current_child.name} is being moved under #{other_child.name} because of a name-match"}
                     children.delete(current_child)
                     category_being_cleaned.remove_child(current_child)
                     other_child.add_child(current_child)
@@ -104,7 +104,7 @@ module ActiveRecord
                 end
               end
             else
-              Log.info {"Children of #{category_being_cleaned.name} have not changed, skipping reorganize_indirect_descendant_children"}
+              logger.info {"Children of #{category_being_cleaned.name} have not changed, skipping reorganize_indirect_descendant_children"}
             end
           end
 
@@ -237,7 +237,7 @@ module ActiveRecord
         # creates a single link in the given link_type's link table between parent and
         # child object ids and creates the appropriate entries in the descendant table
         def link(parent, child, metadata = {})
-          Log.call_stack {"link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"}
+          logger.call_stack {"link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"}
 
           # Check if parent and child have id's
           raise "Parent has no ID" if parent.id.nil?
@@ -250,14 +250,14 @@ module ActiveRecord
 
           # If the link is invalid we should not continue
           unless new_link.valid?
-            Log.info {"Skipping #{descendant_type} update because the link #{link_type} ##{new_link.id} was invalid"}
+            logger.info {"Skipping #{descendant_type} update because the link #{link_type} ##{new_link.id} was invalid"}
             return
           end
 
           # Return unless the save created a new database entry and was not replaced with an existing database entry.
           # If we found one that already exists, we can assume that the proper descendants already exist too
           if new_link.has_been_replaced
-            Log.info {"Skipping #{descendant_type} update because the link #{link_type} ##{link.id} already exists"}
+            logger.info {"Skipping #{descendant_type} update because the link #{link_type} ##{link.id} already exists"}
             return
           end
 
@@ -297,7 +297,7 @@ module ActiveRecord
           child_name = child.name
 
           descendant_table_string = descendant_type.to_s
-          Log.call_stack "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
+          logger.call_stack "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
 
           # Raise an exception if there is no child
           raise "Child cannot be nil when deleting a category_link" unless child
@@ -340,7 +340,7 @@ module ActiveRecord
 
           if events.blank?
             destroy
-            Log.info "Deleted RRN #{self.class} ##{id} (#{name}) during garbage collection"
+            logger.info "Deleted RRN #{self.class} ##{id} (#{name}) during garbage collection"
             return true
           else
             return false
@@ -361,15 +361,15 @@ module ActiveRecord
 
           # No need to save if we find an existing parent-child link since the link contains no information other than that which was used to find the existing record
           if replace(find_duplicate(:parent_id => parent_id, :child_id => child_id))
-            Log.info "Found existing #{self.class} ##{id} #{link_description}"
+            logger.info "Found existing #{self.class} ##{id} #{link_description}"
           end
 
           begin
             super
-            Log.info "Created #{self.class} ##{id} #{link_description}"
+            logger.info "Created #{self.class} ##{id} #{link_description}"
             inform_parents_and_children
           rescue => exception
-            Log.error "RRN #{self.class} ##{id} #{link_description} - Couldn't save because #{exception.message}"
+            logger.error "RRN #{self.class} ##{id} #{link_description} - Couldn't save because #{exception.message}"
           end
         end
 
@@ -388,15 +388,15 @@ module ActiveRecord
 
           # No need to save if we find an existing ancestor-descendant link since the link contains no information other than that which was used to find the existing record
           if replace(find_duplicate(:ancestor_id => ancestor_id, :descendant_id => descendant_id))
-            Log.info("Found existing #{self.class} ##{id} #{descendant_description}")
+            logger.info("Found existing #{self.class} ##{id} #{descendant_description}")
             return
           end
 
           begin
             super
-            Log.info("Created #{self.class} ##{id} #{descendant_description}")
+            logger.info("Created #{self.class} ##{id} #{descendant_description}")
           rescue => exception
-            Log.error "RRN #{self.class} ##{id} #{descendant_description} - Couldn't save because #{exception.message}"
+            logger.error "RRN #{self.class} ##{id} #{descendant_description} - Couldn't save because #{exception.message}"
           end
         end
       end
