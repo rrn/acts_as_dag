@@ -89,7 +89,7 @@ module ActiveRecord
 
           # Reorganizes any child categories of category_being_cleaned, checking for categories that should not be direct descendants and moving them under the appropriate ancestor category, then recursively calls self on the category gaining the errant child
           def self.reorganize_indirect_descendant_children(category_being_cleaned, options = {})
-            logger.call_stack "reorganize_indirect_descendant_children(item_type_being_cleaned = #{category_being_cleaned.name})"
+            #logger.call_stack "reorganize_indirect_descendant_children(item_type_being_cleaned = #{category_being_cleaned.name})"
             if category_being_cleaned.children_have_changed? or options[:force]
               children = category_being_cleaned.children
               for current_child in children
@@ -135,10 +135,6 @@ module ActiveRecord
         end
       end
 
-      # All the methods available to a record that has had <tt>acts_as_list</tt> specified. Each method works
-      # by assuming the object to be the item in the list, so <tt>chapter.move_lower</tt> would move that chapter
-      # lower in the list of all chapters. Likewise, <tt>chapter.first?</tt> would return +true+ if that chapter is
-      # the first in the list of all chapters.
       module InstanceMethods
         attr_accessor :parents_have_changed, :children_have_changed
 
@@ -237,7 +233,7 @@ module ActiveRecord
         # creates a single link in the given link_type's link table between parent and
         # child object ids and creates the appropriate entries in the descendant table
         def link(parent, child, metadata = {})
-          logger.call_stack "link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"
+          #logger.call_stack "link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"
 
           # Check if parent and child have id's
           raise "Parent has no ID" if parent.id.nil?
@@ -297,7 +293,7 @@ module ActiveRecord
           child_name = child.name
 
           descendant_table_string = descendant_type.to_s
-          logger.call_stack "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
+          #logger.call_stack "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
 
           # Raise an exception if there is no child
           raise "Child cannot be nil when deleting a category_link" unless child
@@ -377,14 +373,14 @@ module ActiveRecord
 
         # Update the parent and child informing them that their respective links have been altered
         def inform_parents_and_children
-          child.parents_have_changed = true
-          parent.children_have_changed = true
+          child.parents_have_changed = true if child
+          parent.children_have_changed = true if parent
         end
       end
 
       module DescendantClassInstanceMethods
         def save!
-          #descendant_description = "linking #{ancestor.class} ##{ancestor_id} #{ancestor.name} (ancestor) to #{descendant.class} ##{descendant_id} #{descendant.name} (descendant)"
+          descendant_description = "linking #{ancestor.class} ##{ancestor_id} #{ancestor.name} (ancestor) to #{descendant.class} ##{descendant_id} #{descendant.name} (descendant)"
 
           # No need to save if we find an existing ancestor-descendant link since the link contains no information other than that which was used to find the existing record
           if replace(find_duplicate(:ancestor_id => ancestor_id, :descendant_id => descendant_id))
