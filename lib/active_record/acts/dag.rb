@@ -69,42 +69,29 @@ module ActiveRecord
             has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
           EOV
 
-          # Removes category_being_cleaned's children that are descendants of another one of category_being_cleaned's children
-          # Typically used on category1 after category2 is added as a child without first checking if category1 has a child that should be the parent of category2
-          def self.remove_indirect_descendant_children(category_being_cleaned)
-            current_child_list = category_being_cleaned.children
-            for current_child in current_child_list
-              logger.debug "Checking if #{category_being_cleaned.name} has children that are descendants of #{current_child.name}"
-              for other_child in current_child_list
-                # remove the spurious child of *self*, exclude self because the function returns self as a descendant with distance 0
-                if other_child.descends_from?(current_child, :exclude_self => true)
-                  logger.debug "#{category_being_cleaned.name} contains #{other_child.name} which is a descendant of #{category_being_cleaned.name}'s child #{current_child.name}"
-                  category_being_cleaned.remove_child(other_child)
-                  # remove the child from the list of children we need to check because it is no longer a child
-                  current_child_list.delete(other_child)
-                end
-              end
-            end
-          end
+          named_scope :root_nodes, {:select => "#{table_name}.*", :joins => :parent_links, :conditions => {:parent_id => nil}}
 
-          # Reorganizes any child categories of category_being_cleaned, checking for categories that should not be direct descendants and moving them under the appropriate ancestor category, then recursively calls self on the category gaining the errant child
-          def self.reorganize_indirect_descendant_children(category_being_cleaned, options = {})
-            #logger.call_stack "reorganize_indirect_descendant_children(item_type_being_cleaned = #{category_being_cleaned.name})"
-            if category_being_cleaned.children_have_changed? or options[:force]
-              children = category_being_cleaned.children
-              for current_child in children
-                for other_child in children
-                  if current_child.should_descend_from?(other_child)
-                    logger.info "#{current_child.name} is being moved under #{other_child.name} because of a name-match"
-                    children.delete(current_child)
-                    category_being_cleaned.remove_child(current_child)
-                    other_child.add_child(current_child)
-                    reorganize_indirect_descendant_children(other_child)
+          # Organizes sibling categories based on their name.
+          # eg. "fibre" -> "hemp fibre" has a sibling "indian hemp fibre",
+          # "indian hemp fibre" needs to be reorganized underneath "hemp fibre" because of its name
+          def reorganize(reorganization_root_nodes = root_nodes)
+            # Cross compare each sibling.
+            for category in reorganization_root_nodes
+              for sibling in reorganization_root_nodes
+                # If any sibling should descend from any other sibling,
+                # Remove its parents and place it under its new parent
+                if sibling.should_descend_from?(category)
+                  logger.info "Reorganizing: #{sibling.name} should descend from #{category.name}"
+                  sibling.parents.each do |parent|
+                    sibling.remove_parent(parent)
                   end
+                  category.add_child(sibling)
+                  # Remove it from the list of entries we are iterating through
+                  reorganization_root_nodes.delete(sibling)
                 end
               end
-            else
-              logger.info "Children of #{category_being_cleaned.name} have not changed, skipping reorganize_indirect_descendant_children"
+              # Recurse down the hierarchy applying the same rules to each level
+              reorganize_siblings(category.children)
             end
           end
 
