@@ -74,24 +74,31 @@ module ActiveRecord
           # Organizes sibling categories based on their name.
           # eg. "fibre" -> "hemp fibre" has a sibling "indian hemp fibre",
           # "indian hemp fibre" needs to be reorganized underneath "hemp fibre" because of its name
-          def reorganize(reorganization_root_nodes = root_nodes)
+          def reorganize(parent = nil, siblings = root_nodes)
             # Cross compare each sibling.
-            for category in reorganization_root_nodes
-              for sibling in reorganization_root_nodes
-                # If any sibling should descend from any other sibling,
-                # Remove its parents and place it under its new parent
-                if sibling.should_descend_from?(category)
-                  logger.info "Reorganizing: #{sibling.name} should descend from #{category.name}"
-                  sibling.parents.each do |parent|
-                    sibling.remove_parent(parent)
-                  end
-                  category.add_child(sibling)
-                  # Remove it from the list of entries we are iterating through
-                  reorganization_root_nodes.delete(sibling)
+            for current_category in siblings
+              for sibling in siblings
+                # If this category should descend from any other sibling,
+                # Remove its parents and place it under its sibling
+                if current_category.should_descend_from?(sibling)
+                  logger.info "Reorganizing: #{current_category.name} should descend from #{sibling.name}"
+                  # If the current_category still has parent as a parent
+                  # (which it may not if another sibling has also claimed it as a
+                  # child, eg. in the case of "spindle" and "whorl" both claiming "spindle whorl"),
+                  # remove it and add the current_category as a child of its sibling
+                  parent.remove_child(current_category) if current_category.parents.include?(parent)
+                  sibling.add_child(current_category)
                 end
               end
-              # Recurse down the hierarchy applying the same rules to each level
-              reorganize(category.children)
+              # Remove it from the list of entries we are iterating through because
+              # it has been compared to every sibling and does not need to be
+              # looked at when comparing the remaining siblings
+              siblings.delete(sibling)
+            end
+
+            # Recurse down the hierarchy applying the same rules to each level
+            siblings.each do |category|
+              reorganize(category, category.children)
             end
           end
 
@@ -123,18 +130,6 @@ module ActiveRecord
       end
 
       module InstanceMethods
-        attr_accessor :parents_have_changed, :children_have_changed
-
-        # True if a link has been created to this object specifying it as the parent
-        def children_have_changed?
-          @children_have_changed
-        end
-
-        # True if a link has been created to this object specifying it as the child
-        def parents_have_changed?
-          @parents_have_changed
-        end
-
         # Adds a category as a parent of this category (self)
         def add_parent(parent, metadata = {})
           link(parent, self, metadata)
@@ -350,18 +345,9 @@ module ActiveRecord
           begin
             super
             logger.info "Created #{self.class} ##{id} #{link_description}"
-            inform_parents_and_children
           rescue => exception
             logger.error "RRN #{self.class} ##{id} #{link_description} - Couldn't save because #{exception.message}"
           end
-        end
-
-        private
-
-        # Update the parent and child informing them that their respective links have been altered
-        def inform_parents_and_children
-          child.parents_have_changed = true if child
-          parent.children_have_changed = true if parent
         end
       end
 
