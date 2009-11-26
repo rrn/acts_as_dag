@@ -69,7 +69,7 @@ module ActiveRecord
             has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
           EOV
 
-          named_scope :root_nodes, {:select => "#{table_name}.*", :joins => :parent_links, :conditions => {:parent_id => nil}}
+          named_scope :root_nodes, {:select => "#{table_name}.*", :joins => :parent_links, :conditions => "parent_id IS NULL"}
 
           # Organizes sibling categories based on their name.
           # eg. "fibre" -> "hemp fibre" has a sibling "indian hemp fibre",
@@ -91,7 +91,7 @@ module ActiveRecord
                 end
               end
               # Recurse down the hierarchy applying the same rules to each level
-              reorganize_siblings(category.children)
+              reorganize(category.children)
             end
           end
 
