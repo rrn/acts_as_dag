@@ -91,10 +91,11 @@ module ActiveRecord
                   # If the current_category still has parent as a parent
                   # (which it may not if another sibling has also claimed it as a
                   # child, eg. in the case of "spindle" and "whorl" both claiming "spindle whorl"),
-                  # remove it and add the current_category as a child of its sibling
+                  # remove it
                   if current_category.parents.include?(parent)
                     parent.remove_child(current_category)
                   end
+                  # add the current_category as a child of its sibling
                   sibling.add_child(current_category)
                 end
               end
@@ -219,26 +220,21 @@ module ActiveRecord
         # creates a single link in the given link_type's link table between parent and
         # child object ids and creates the appropriate entries in the descendant table
         def link(parent, child, metadata = {})
-          #logger.call_stack "link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"
+          logger.call_stack "link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"
 
           # Check if parent and child have id's
           raise "Parent has no ID" if parent.id.nil?
           raise "Child has no ID" if child.id.nil?
 
           # Create a new parent-child link
-          new_link = link_type.new(:parent => parent, :child => child)
-          new_link.attributes = metadata
-          new_link.save!
-
-          # If the link is invalid we should not continue
-          unless new_link.valid?
-            logger.info "Skipping #{descendant_type} update because the link #{link_type} ##{new_link.id} was invalid"
-            return
-          end
+          new_link = link_type.find_or_initialize_by_parent_id_and_child_id(:parent_id => parent.id, :child_id => child.id)
 
           # Return unless the save created a new database entry and was not replaced with an existing database entry.
           # If we found one that already exists, we can assume that the proper descendants already exist too
-          if new_link.has_been_replaced
+          if new_link.new_record?
+            new_link.attributes = metadata
+            new_link.save!
+          else
             logger.info "Skipping #{descendant_type} update because the link #{link_type} ##{new_link.id} already exists"
             return
           end
@@ -246,8 +242,8 @@ module ActiveRecord
           # If we have been passed a parent, find and destroy any exsting links from nil (root) to the child as it can no longer be a top-level node
           unlink(nil, child) if parent
 
-          # update descendants listing by creating links from the parent and its
-          # ancestors to the child and its descendants
+          # The parent and all its ancestors need to be added as ancestors of the child
+          # The child and all its descendants need to be added as descendants of the parent
 
           # get parent ancestor id list
           parent_ancestor_links = descendant_type.find(:all, :conditions => { :descendant_id => parent.id })
@@ -279,7 +275,7 @@ module ActiveRecord
           child_name = child.name
 
           descendant_table_string = descendant_type.to_s
-          #logger.call_stack "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
+          logger.call_stack "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
 
           # Raise an exception if there is no child
           raise "Child cannot be nil when deleting a category_link" unless child
