@@ -77,6 +77,18 @@ module ActiveRecord
             has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
           EOV
 
+          # Remove all hierarchy information for this category
+          def reset_hierarchy
+            logger.info "Clearing #{self.class.name} hierarchy links"
+            link_type.destroy_all
+            all.each(&:initialize_links)
+
+            logger.info "Clearing #{self.class.name} hierarchy descendants"
+            descendant_type.destroy_all
+            all.each(&:initialize_descendants)
+          end
+
+
           # Organizes sibling categories based on their name.
           # eg. "fibre" -> "hemp fibre" has a sibling "indian hemp fibre",
           # "indian hemp fibre" needs to be reorganized underneath "hemp fibre" because of its name
