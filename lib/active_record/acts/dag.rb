@@ -45,12 +45,20 @@ module ActiveRecord
               ::#{self.name}
             end
 
-            def link_type
+            def self.link_type
               ::#{link_class}
             end
 
-            def descendant_type
+            def self.descendant_type
               ::#{descendant_class}
+            end
+
+            def link_type
+              self.class.link_type
+            end
+
+            def descendant_type
+              self.class.descendant_type
             end
 
             after_create :initialize_links
@@ -69,12 +77,10 @@ module ActiveRecord
             has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
           EOV
 
-          named_scope :root_nodes, {:select => "#{table_name}.*", :joins => :parent_links, :conditions => "parent_id IS NULL"}
-
           # Organizes sibling categories based on their name.
           # eg. "fibre" -> "hemp fibre" has a sibling "indian hemp fibre",
           # "indian hemp fibre" needs to be reorganized underneath "hemp fibre" because of its name
-          def reorganize(parent = nil, siblings = root_nodes)
+          def reorganize(siblings, parent = nil)
             # Cross compare each sibling.
             for current_category in siblings
               for sibling in siblings
@@ -86,19 +92,17 @@ module ActiveRecord
                   # (which it may not if another sibling has also claimed it as a
                   # child, eg. in the case of "spindle" and "whorl" both claiming "spindle whorl"),
                   # remove it and add the current_category as a child of its sibling
-                  parent.remove_child(current_category) if current_category.parents.include?(parent)
+                  if current_category.parents.include?(parent)
+                    parent.remove_child(current_category)
+                  end
                   sibling.add_child(current_category)
                 end
               end
-              # Remove it from the list of entries we are iterating through because
-              # it has been compared to every sibling and does not need to be
-              # looked at when comparing the remaining siblings
-              siblings.delete(sibling)
             end
 
             # Recurse down the hierarchy applying the same rules to each level
             siblings.each do |category|
-              reorganize(category, category.children)
+              reorganize(category.children, category)
             end
           end
 
