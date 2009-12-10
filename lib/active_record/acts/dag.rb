@@ -125,23 +125,33 @@ module ActiveRecord
           #   :exclude                - ensures that the single record, or array of records passed to not appear in the results
           def self.find_matches(string, options = {})
             # Create a 'similar to' condition for each word in the string
-            conditions = Array.new
+            sql = Array.new
+            vars = Array.new
             for word in string.split
-              conditions << "name SIMILAR TO '(% )*#{word}( %)*'"
+              sql << "name ~ ?"
+              vars << "\\m#{Regexp.escape(word)}"
             end
 
             # Optionally Exclude records with a name exactly matching the search string
-            conditions << "name != '#{string}'" if options[:exclude_exact_match]
+            if options[:exclude_exact_match]
+            sql << "name != ?"
+            vars << string
+            end
 
             # Optionally exclude results from the return values ( eg. if you don't want to return the item you're finding matches for )
             if options[:exclude].is_a?(self.class)
-              conditions << "id != #{options[:exclude].id}"
+              sql << "id != ?"
+              sql << options[:exclude].id
             elsif options[:exclude].is_a?(Array) && !options[:exclude].empty?
               exclusion_list = options[:exclude].collect{|record| record.id}
-              conditions << "id NOT IN (#{exclusion_list.join(',')})"
+              sql << "id NOT IN (?)"
+              vars << exclusion_list.join(',')
             end
 
-            return find(:all, :conditions => conditions.join(' AND '))
+            # Create the conditions array so rails will escape it.
+            conditions = [sql.join(' AND ')].concat(vars)
+
+            return find(:all, :conditions => conditions)
           end
         end
       end
