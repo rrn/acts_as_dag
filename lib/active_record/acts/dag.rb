@@ -129,7 +129,7 @@ module ActiveRecord
             vars = Array.new
             for word in string.split
               sql << "name ~ ?"
-              vars << "\\m#{Regexp.escape(word)}"
+              vars << "\\y#{Regexp.escape(word)}\\y"
             end
 
             # Optionally Exclude records with a name exactly matching the search string
