@@ -80,11 +80,11 @@ module ActiveRecord
           # Remove all hierarchy information for this category
           def reset_hierarchy
             logger.info "Clearing #{self.class.name} hierarchy links"
-            link_type.destroy_all
+            link_type.delete_all
             all.each(&:initialize_links)
 
             logger.info "Clearing #{self.class.name} hierarchy descendants"
-            descendant_type.destroy_all
+            descendant_type.delete_all
             all.each(&:initialize_descendants)
           end
 
