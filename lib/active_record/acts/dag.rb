@@ -79,11 +79,11 @@ module ActiveRecord
 
           # Remove all hierarchy information for this category
           def reset_hierarchy
-            logger.info "Clearing #{self.class.name} hierarchy links"
+            logger.info "Clearing #{self.name} hierarchy links"
             link_type.delete_all
             all.each(&:initialize_links)
 
-            logger.info "Clearing #{self.class.name} hierarchy descendants"
+            logger.info "Clearing #{self.name} hierarchy descendants"
             descendant_type.delete_all
             all.each(&:initialize_descendants)
           end
@@ -361,12 +361,12 @@ module ActiveRecord
 
           # No need to save if we find an existing parent-child link since the link contains no information other than that which was used to find the existing record
           if replace(find_duplicate(:parent_id => parent_id, :child_id => child_id))
-            logger.info "Found existing #{self.class} ##{id} #{link_description}"
+            logger.debug "Found existing #{self.class} ##{id} #{link_description}"
           end
 
           begin
             super
-            logger.info "Created #{self.class} ##{id} #{link_description}"
+            logger.debug "Created #{self.class} ##{id} #{link_description}"
           rescue => exception
             logger.error "RRN #{self.class} ##{id} #{link_description} - Couldn't save because #{exception.message}"
           end
@@ -379,13 +379,13 @@ module ActiveRecord
 
           # No need to save if we find an existing ancestor-descendant link since the link contains no information other than that which was used to find the existing record
           if replace(find_duplicate(:ancestor_id => ancestor_id, :descendant_id => descendant_id))
-            logger.info "Found existing #{self.class} ##{id} #{descendant_description}"
+            logger.debug "Found existing #{self.class} ##{id} #{descendant_description}"
             return
           end
 
           begin
             super
-            logger.info "Created #{self.class} ##{id} #{descendant_description}"
+            logger.debug "Created #{self.class} ##{id} #{descendant_description}"
           rescue => exception
             logger.error "RRN #{self.class} ##{id} #{descendant_description} - Couldn't save because #{exception.message}"
           end
