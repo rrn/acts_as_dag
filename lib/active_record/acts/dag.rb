@@ -88,6 +88,16 @@ module ActiveRecord
             all.each(&:initialize_descendants)
           end
 
+          # Reorganizes the entire class of records, first resetting the hierarchy, then reoganizing
+          def reorganize_all
+            # Reorganize categories that need reorganization
+            # Remove all hierarchy information for categories we're going to rearrange so
+            # all categories are processed and we avoid the following situation:
+            # e.g. ivory -> walrus ivory. then walrus added, but doesn't see walrus ivory
+            # because it's under ivory and not at the top level
+            reset_hierarchy
+            reorganize(self.all)
+          end
 
           # Organizes sibling categories based on their name.
           # eg. "fibre" -> "hemp fibre" has a sibling "indian hemp fibre",
