@@ -252,7 +252,7 @@ module ActiveRecord
         # creates a single link in the given link_type's link table between parent and
         # child object ids and creates the appropriate entries in the descendant table
         def link(parent, child, metadata = {})
-          logger.call_stack "link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"
+          logger.info "link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"
 
           # Check if parent and child have id's
           raise "Parent has no ID" if parent.id.nil?
@@ -307,7 +307,7 @@ module ActiveRecord
           child_name = child.name
 
           descendant_table_string = descendant_type.to_s
-          logger.call_stack "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
+          logger.info "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
 
           # Raise an exception if there is no child
           raise "Child cannot be nil when deleting a category_link" unless child
