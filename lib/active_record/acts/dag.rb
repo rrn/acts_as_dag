@@ -220,7 +220,9 @@ module ActiveRecord
           # Delete all the words contained in the ancestor's name from the descendant's name
           # Return false, if one of the words is not contained in the descendant's name
           for word in ancestor_name_words
-            unless descendant_name_words.delete(word)
+            if index = descendant_name_words.index(word)
+              descendant_name_words.delete_at(index)
+            else
               return false
             end
           end
