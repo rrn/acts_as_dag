@@ -131,7 +131,7 @@ module ActiveRecord
 
           # Return all categories whose name contains the all the words in +string+
           # Options:
-          #   :exclude_exact_match    - cause any categories whose name matches the search string exactly
+          #   :exclude_exact_match    - exclude any categories whose name matches the search string exactly
           #   :exclude                - ensures that the single record, or array of records passed to not appear in the results
           def self.find_matches(string, options = {})
             # Create a 'similar to' condition for each word in the string
@@ -374,12 +374,8 @@ module ActiveRecord
             logger.debug "Found existing #{self.class} ##{id} #{link_description}"
           end
 
-          begin
-            super
-            logger.debug "Created #{self.class} ##{id} #{link_description}"
-          rescue => exception
-            logger.error "RRN #{self.class} ##{id} #{link_description} - Couldn't save because #{exception.message}"
-          end
+          super
+          logger.debug "Created #{self.class} ##{id} #{link_description}"
         end
       end
 
@@ -393,12 +389,8 @@ module ActiveRecord
             return
           end
 
-          begin
-            super
-            logger.debug "Created #{self.class} ##{id} #{descendant_description}"
-          rescue => exception
-            logger.error "RRN #{self.class} ##{id} #{descendant_description} - Couldn't save because #{exception.message}"
-          end
+          super
+          logger.debug "Created #{self.class} ##{id} #{descendant_description}"
         end
       end
     end
