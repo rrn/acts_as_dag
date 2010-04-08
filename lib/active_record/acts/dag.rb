@@ -77,6 +77,8 @@ module ActiveRecord
             has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
           EOV
 
+          named_scope :roots, {:joins => :parent_links, :conditions => "parent_id IS NULL"}
+
           # Remove all hierarchy information for this category
           def reset_hierarchy
             logger.info "Clearing #{self.name} hierarchy links"
@@ -96,13 +98,26 @@ module ActiveRecord
             # e.g. ivory -> walrus ivory. then walrus added, but doesn't see walrus ivory
             # because it's under ivory and not at the top level
             reset_hierarchy
-            reorganize(self.all)
+            reorganize
           end
 
           # Organizes sibling categories based on their name.
           # eg. "fibre" -> "hemp fibre" has a sibling "indian hemp fibre",
           # "indian hemp fibre" needs to be reorganized underneath "hemp fibre" because of its name
-          def reorganize(siblings, parent = nil)
+          def reorganize(starting_nodes = nil)
+            case starting_nodes
+            when self
+              # When we pass an instance of this class and want its children reorganized
+              parent = starting_nodes
+              siblings = starting_nodes.children
+            when nil
+              # When we pass nothing and want all root nodes reorganized
+              siblings = self.roots
+            else
+              # When we pass an array and want each node reorganized
+              siblings = starting_nodes
+            end
+
             # Cross compare each sibling.
             for current_category in siblings
               for sibling in siblings
@@ -110,28 +125,25 @@ module ActiveRecord
                 # Remove its parents and place it under its sibling
                 if current_category.should_descend_from?(sibling)
                   logger.info "Reorganizing: #{current_category.name} should descend from #{sibling.name}"
-                  # If the current_category still has parent as a parent
-                  # (which it may not if another sibling has also claimed it as a
-                  # child, eg. in the case of "spindle" and "whorl" both claiming "spindle whorl"),
-                  # remove it
-                  if current_category.parents.include?(parent)
-                    parent.remove_child(current_category)
-                  end
                   # add the current_category as a child of its sibling
                   sibling.add_child(current_category)
+                  if parent
+                    # This category no long descends from its parent
+                    parent.remove_child(current_category)
+                  end
                 end
               end
             end
 
             # Recurse down the hierarchy applying the same rules to each level
             siblings.each do |category|
-              reorganize(category.children, category)
+              reorganize(category)
             end
           end
 
           # Return all categories whose name contains the all the words in +string+
           # Options:
-          #   :exclude_exact_match    - cause any categories whose name matches the search string exactly
+          #   :exclude_exact_match    - exclude any categories whose name matches the search string exactly
           #   :exclude                - ensures that the single record, or array of records passed to not appear in the results
           def self.find_matches(string, options = {})
             # Create a 'similar to' condition for each word in the string
@@ -144,8 +156,8 @@ module ActiveRecord
 
             # Optionally Exclude records with a name exactly matching the search string
             if options[:exclude_exact_match]
-            sql << "name != ?"
-            vars << string
+              sql << "name != ?"
+              vars << string
             end
 
             # Optionally exclude results from the return values ( eg. if you don't want to return the item you're finding matches for )
@@ -167,6 +179,11 @@ module ActiveRecord
       end
 
       module InstanceMethods
+        # Reorganizes all children of this category (self)
+        def reorganize
+          self.class.reorganize(self)
+        end
+
         # Adds a category as a parent of this category (self)
         def add_parent(parent, metadata = {})
           link(parent, self, metadata)
@@ -376,12 +393,8 @@ module ActiveRecord
             logger.debug "Found existing #{self.class} ##{id} #{link_description}"
           end
 
-          begin
-            super
-            logger.debug "Created #{self.class} ##{id} #{link_description}"
-          rescue => exception
-            logger.error "RRN #{self.class} ##{id} #{link_description} - Couldn't save because #{exception.message}"
-          end
+          super
+          logger.debug "Created #{self.class} ##{id} #{link_description}"
         end
       end
 
@@ -395,12 +408,8 @@ module ActiveRecord
             return
           end
 
-          begin
-            super
-            logger.debug "Created #{self.class} ##{id} #{descendant_description}"
-          rescue => exception
-            logger.error "RRN #{self.class} ##{id} #{descendant_description} - Couldn't save because #{exception.message}"
-          end
+          super
+          logger.debug "Created #{self.class} ##{id} #{descendant_description}"
         end
       end
     end
