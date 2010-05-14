@@ -15,16 +15,12 @@ module ActiveRecord
             class ::#{link_class} < ActiveRecord::Base
               include ActiveRecord::Acts::DAG::LinkClassInstanceMethods
 
-              acts_as_replaceable :conditions => [:child_id, :parent_id]
-
               belongs_to :parent, :class_name => '#{self.name}', :foreign_key => 'parent_id'
               belongs_to :child, :class_name => '#{self.name}', :foreign_key => 'child_id'
             end
 
             class ::#{descendant_class} < ActiveRecord::Base
               include ActiveRecord::Acts::DAG::DescendantClassInstanceMethods
-
-              acts_as_replaceable :conditions => [:ancestor_id, :descendant_id]
 
               belongs_to :ancestor, :class_name => '#{self.name}', :foreign_key => "ancestor_id"
               belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => "descendant_id"
@@ -256,12 +252,10 @@ module ActiveRecord
         private
         # CALLBACKS
         def initialize_links
-          raise 'initialized links for existing record' if @has_been_replaced
           link_type.new(:parent_id => nil, :child_id => id).save! unless @create_links.eql? false
         end
 
         def initialize_descendants
-          raise 'initialized descendants for existing record' if @has_been_replaced
           descendant_type.new(:ancestor_id => id, :descendant_id => id, :distance => 0).save! unless @create_descendants.eql? false
         end
         # END CALLBACKS
@@ -383,34 +377,34 @@ module ActiveRecord
           errors.add_to_base("Circular #{self.class} cannot be created.") if parent_id == child_id
         end
 
-        def save!
-          parent_name = parent ? parent.name : 'root'
-          parent_id_string = parent ? parent_id : 'none'
-          link_description = "linking #{parent.class} ##{parent_id_string} #{parent_name} (parent) to #{child.class} ##{child_id} #{child.name} (child)"
-
-          # No need to save if we find an existing parent-child link since the link contains no information other than that which was used to find the existing record
-          if replace(find_duplicate(:parent_id => parent_id, :child_id => child_id))
-            logger.debug "Found existing #{self.class} ##{id} #{link_description}"
-          end
-
-          super
-          logger.debug "Created #{self.class} ##{id} #{link_description}"
-        end
+#        def save!
+#          parent_name = parent ? parent.name : 'root'
+#          parent_id_string = parent ? parent_id : 'none'
+#          link_description = "linking #{parent.class} ##{parent_id_string} #{parent_name} (parent) to #{child.class} ##{child_id} #{child.name} (child)"
+#
+#          # No need to save if we find an existing parent-child link since the link contains no information other than that which was used to find the existing record
+#          if replace(find_duplicate(:parent_id => parent_id, :child_id => child_id))
+#            logger.debug "Found existing #{self.class} ##{id} #{link_description}"
+#          end
+#
+#          super
+#          logger.debug "Created #{self.class} ##{id} #{link_description}"
+#        end
       end
 
       module DescendantClassInstanceMethods
-        def save!
-          descendant_description = "linking #{ancestor.class} ##{ancestor_id} #{ancestor.name} (ancestor) to #{descendant.class} ##{descendant_id} #{descendant.name} (descendant)"
-
-          # No need to save if we find an existing ancestor-descendant link since the link contains no information other than that which was used to find the existing record
-          if replace(find_duplicate(:ancestor_id => ancestor_id, :descendant_id => descendant_id))
-            logger.debug "Found existing #{self.class} ##{id} #{descendant_description}"
-            return
-          end
-
-          super
-          logger.debug "Created #{self.class} ##{id} #{descendant_description}"
-        end
+#        def save!
+#          descendant_description = "linking #{ancestor.class} ##{ancestor_id} #{ancestor.name} (ancestor) to #{descendant.class} ##{descendant_id} #{descendant.name} (descendant)"
+#
+#          # No need to save if we find an existing ancestor-descendant link since the link contains no information other than that which was used to find the existing record
+#          if replace(find_duplicate(:ancestor_id => ancestor_id, :descendant_id => descendant_id))
+#            logger.debug "Found existing #{self.class} ##{id} #{descendant_description}"
+#            return
+#          end
+#
+#          super
+#          logger.debug "Created #{self.class} ##{id} #{descendant_description}"
+#        end
       end
     end
   end
