@@ -347,8 +347,8 @@ module ActiveRecord
         # GARBAGE COLLECTION
         # Remove all entries from this object's table that are not associated in some way with an item
         def self.garbage_collect
-          class_name = self.class.to_s.tableize
-          root_locations = self.class.find(:all, :conditions => "#{class_name}_links.parent_id IS NULL", :include => "#{class_name}_parents")
+          table_prefix = self.class.name.tableize
+          root_locations = self.class.find(:all, :conditions => "#{table_prefix}_links.parent_id IS NULL", :include => "#{table_prefix}_parents")
           for root_location in root_locations
             root_location.garbage_collect
           end
