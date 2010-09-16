@@ -22,17 +22,6 @@ module ActsAsDAG
         belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => "descendant_id"
       end
 
-      include ActsAsDAG::InstanceMethods
-
-      attr_reader :create_links, :create_descendants
-
-      def initialize(params = {})
-        # allow user to disable creation of DAG entries on creation
-        @create_links = params.delete(:create_links)
-        @create_descendants = params.delete(:create_descendants)
-        super(params)
-      end
-
       def acts_as_dag_class
         ::#{self.name}
       end
@@ -44,15 +33,19 @@ module ActsAsDAG
       def self.descendant_type
         ::#{descendant_class}
       end
+      EOV
+      
+      include ActsAsDAG::InstanceMethods
 
-      def link_type
-        self.class.link_type
+      attr_reader :create_links, :create_descendants
+
+      def initialize(params = {})
+        # allow user to disable creation of DAG entries on creation
+        @create_links = params.delete(:create_links)
+        @create_descendants = params.delete(:create_descendants)
+        super(params)
       end
-
-      def descendant_type
-        self.class.descendant_type
-      end
-
+      
       after_create :initialize_links
       after_create :initialize_descendants
 
@@ -67,7 +60,6 @@ module ActsAsDAG
       has_many :ancestors, :through => :ancestor_links, :source => :ancestor, :order => "distance DESC"
       has_many :descendant_links, :class_name => '#{descendant_class}', :foreign_key => 'ancestor_id', :dependent => :destroy
       has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
-      EOV
 
       named_scope :roots, {:joins => :parent_links, :conditions => "parent_id IS NULL"}
 
@@ -170,7 +162,7 @@ module ActsAsDAG
     end
   end
 
-  module InstanceMethods
+  module InstanceMethods    
     # Reorganizes all children of this category (self)
     def reorganize
       self.class.reorganize(self)
@@ -243,6 +235,14 @@ module ActsAsDAG
       else
         return true
       end
+    end
+    
+    def link_type
+      self.class.link_type
+    end
+
+    def descendant_type
+      self.class.descendant_type
     end
 
     private
