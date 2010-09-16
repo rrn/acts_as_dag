@@ -374,3 +374,7 @@ module ActsAsDAG
     end
   end
 end
+
+if Object.const_defined?("ActiveRecord")
+  ActiveRecord::Base.send(:include, ActsAsDAG)
+end
