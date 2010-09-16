@@ -33,6 +33,18 @@ module ActsAsDAG
       def self.descendant_type
         ::#{descendant_class}
       end
+
+      has_many :parent_links, :class_name => '#{link_class}', :foreign_key => 'child_id', :dependent => :destroy
+      has_many :parents, :through => :parent_links, :source => :parent
+      has_many :child_links, :class_name => '#{link_class}', :foreign_key => 'parent_id', :dependent => :destroy
+      has_many :children, :through => :child_links, :source => :child
+
+      # Ancestors must always be returned in order of most distant to least
+      # Descendants must always be returned in order of least distant to most
+      has_many :ancestor_links, :class_name => '#{descendant_class}', :foreign_key => 'descendant_id', :dependent => :destroy
+      has_many :ancestors, :through => :ancestor_links, :source => :ancestor, :order => "distance DESC"
+      has_many :descendant_links, :class_name => '#{descendant_class}', :foreign_key => 'ancestor_id', :dependent => :destroy
+      has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
       EOV
       
       include ActsAsDAG::InstanceMethods
@@ -48,18 +60,6 @@ module ActsAsDAG
       
       after_create :initialize_links
       after_create :initialize_descendants
-
-      has_many :parent_links, :class_name => '#{link_class}', :foreign_key => 'child_id', :dependent => :destroy
-      has_many :parents, :through => :parent_links, :source => :parent
-      has_many :child_links, :class_name => '#{link_class}', :foreign_key => 'parent_id', :dependent => :destroy
-      has_many :children, :through => :child_links, :source => :child
-
-      # Ancestors must always be returned in order of most distant to least
-      # Descendants must always be returned in order of least distant to most
-      has_many :ancestor_links, :class_name => '#{descendant_class}', :foreign_key => 'descendant_id', :dependent => :destroy
-      has_many :ancestors, :through => :ancestor_links, :source => :ancestor, :order => "distance DESC"
-      has_many :descendant_links, :class_name => '#{descendant_class}', :foreign_key => 'ancestor_id', :dependent => :destroy
-      has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
 
       named_scope :roots, {:joins => :parent_links, :conditions => "parent_id IS NULL"}
 
@@ -162,7 +162,7 @@ module ActsAsDAG
     end
   end
 
-  module InstanceMethods    
+  module InstanceMethods
     # Reorganizes all children of this category (self)
     def reorganize
       self.class.reorganize(self)
