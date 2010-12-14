@@ -67,11 +67,11 @@ module ActsAsDAG
       def reset_hierarchy
         logger.info "Clearing #{self.name} hierarchy links"
         link_type.delete_all
-        all.each(&:initialize_links)
+        find_each(&:initialize_links)
 
         logger.info "Clearing #{self.name} hierarchy descendants"
         descendant_type.delete_all
-        all.each(&:initialize_descendants)
+        find_each(&:initialize_descendants)
       end
 
       # Reorganizes the entire class of records, first resetting the hierarchy, then reoganizing
@@ -245,7 +245,6 @@ module ActsAsDAG
       self.class.descendant_type
     end
 
-    private
     # CALLBACKS
     def initialize_links
       link_type.new(:parent_id => nil, :child_id => id).save! unless @create_links.eql? false
@@ -256,6 +255,8 @@ module ActsAsDAG
     end
     # END CALLBACKS
 
+    private
+    
     # LINKING FUNCTIONS
 
     # creates a single link in the given link_type's link table between parent and
