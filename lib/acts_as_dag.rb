@@ -12,6 +12,8 @@ module ActsAsDAG
       class_eval <<-EOV
       class ::#{link_class} < ActiveRecord::Base
         include ActsAsDAG::LinkClassInstanceMethods
+        
+        validate :not_circular_link
 
         belongs_to :parent, :class_name => '#{self.name}', :foreign_key => 'parent_id'
         belongs_to :child, :class_name => '#{self.name}', :foreign_key => 'child_id'
@@ -41,6 +43,13 @@ module ActsAsDAG
 
       # Ancestors must always be returned in order of most distant to least
       # Descendants must always be returned in order of least distant to most
+      # NOTE: multiple instances of the same descendant/ancestor may be returned if there are multiple paths from ancestor to descendant
+      #   A
+      #  / \
+      # B   C
+      #  \ /
+      #   D
+      #
       has_many :ancestor_links, :class_name => '#{descendant_class}', :foreign_key => 'descendant_id', :dependent => :destroy
       has_many :ancestors, :through => :ancestor_links, :source => :ancestor, :order => "distance DESC"
       has_many :descendant_links, :class_name => '#{descendant_class}', :foreign_key => 'ancestor_id', :dependent => :destroy
@@ -109,12 +118,18 @@ module ActsAsDAG
             # Remove its parents and place it under its sibling
             if current_category.should_descend_from?(sibling)
               logger.info "Reorganizing: #{current_category.name} should descend from #{sibling.name}"
+              
               # add the current_category as a child of its sibling
               sibling.add_child(current_category)
+              
               if parent
                 # This category no long descends from its parent
                 parent.remove_child(current_category)
               end
+              
+              # Break out of the inner loop because we've moved the current category
+              # underneath one of its siblings and don't need to keep looking for a new parent
+              break
             end
           end
         end
@@ -281,29 +296,22 @@ module ActsAsDAG
         return
       end
 
-      # If we have been passed a parent, find and destroy any exsting links from nil (root) to the child as it can no longer be a top-level node
+      # If we have been passed a parent, find and destroy any existing links from nil (root) to the child as it can no longer be a top-level node
       unlink(nil, child) if parent
 
       # The parent and all its ancestors need to be added as ancestors of the child
       # The child and all its descendants need to be added as descendants of the parent
 
       # get parent ancestor id list
-      parent_ancestor_links = descendant_type.find(:all, :conditions => { :descendant_id => parent.id })
+      parent_ancestor_links = descendant_type.find(:all, :conditions => { :descendant_id => parent.id }) # (totem => totem pole), (totem_pole => totem_pole)
       # get child descendant id list
-      child_descendant_links = descendant_type.find(:all, :conditions => { :ancestor_id => child.id })
+      child_descendant_links = descendant_type.find(:all, :conditions => { :ancestor_id => child.id }) # (totem pole model => totem pole model)
       for parent_ancestor_link in parent_ancestor_links
         for child_descendant_link in child_descendant_links
-          descendant_link = descendant_type.new
-          # get the ancestor id from the parent's ancestor that we are making a
-          # link from
-          descendant_link.ancestor_id = parent_ancestor_link.ancestor_id
-          # get the descendant id from the child's descendant that we are making a
-          # link to
-          descendant_link.descendant_id = child_descendant_link.descendant_id
-          # get the distance as the sum of the distance from the ancestor to the
-          # parent and from the child to the descendant
-          descendant_link.distance = parent_ancestor_link.distance + child_descendant_link.distance + 1
-
+          descendant_link = descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(:ancestor_id => parent_ancestor_link.ancestor_id, 
+          :descendant_id => child_descendant_link.descendant_id, 
+          :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1)
+          
           descendant_link.attributes = metadata
           descendant_link.save!
         end
@@ -312,7 +320,7 @@ module ActsAsDAG
 
     # breaks a single link in the given hierarchy_link_table between parent and
     # child object id. Updates the appropriate Descendants table entries
-    def unlink(parent, child)
+    def unlink(parent, child) # tp => bmtp
       parent_name = parent ? parent.name : 'Root'
       child_name = child.name
 
@@ -322,7 +330,7 @@ module ActsAsDAG
       # Raise an exception if there is no child
       raise "Child cannot be nil when deleting a category_link" unless child
 
-      parent_id_constraint = parent ? "parent_id = #{parent.id}" : "parent_id is null"
+      parent_id_constraint = parent ? "parent_id = #{parent.id}" : "parent_id IS NULL"
       child_id_constraint = "child_id = #{child.id}"
 
       # delete the links
@@ -331,13 +339,31 @@ module ActsAsDAG
       # update descendants listing by deleting all links from the parent and its
       # ancestors to the child and its descendants
 
-      # deal with nil parent when category is top-level
-      parent_ancestor_id_condition = parent ? "IN (SELECT ancestor_id FROM #{descendant_table_string.tableize} WHERE descendant_id = #{parent.id})" : "IS NULL"
-      child_descendant_id_condition = "IN (SELECT descendant_id FROM #{descendant_table_string.tableize} WHERE ancestor_id = #{child.id})"
-
-      # delete (any combination of ancestor and descendant should be a link we
-      # need to delete)
-      descendant_type.delete_all("ancestor_id #{parent_ancestor_id_condition} AND descendant_id #{child_descendant_id_condition}")
+      # No need to delete any descendants if the parent is nil, since nothing in the descendants table descends from nil.
+      if parent.present?
+        # Delete all descendant links that have the incorrect distance between parent and child.
+        parent.ancestors.each do |ancestor|
+          ancestor.descendant_links.each do |link|
+            # + totem => totem pole 1
+            # + totem => big totem pole 2
+            # - totem => big model totem pole 2
+            # + totem => big model totem pole 3
+            # - totem => big red model totem pole 3
+            # + totem => big red model totem pole 4
+            
+            # * big model totem pole => big model totem pole 0
+            # big red model totem pole => big red model totem pole 1
+            if child_link = child.descendant_links.detect {|child_link| child_link.descendant_id == link.descendant_id}
+              if link.distance ==  ancestor_distance + 1 + child_link.distance
+                another_parent_with_same_distance = link.descendant.parents.any? do |parent|
+                  parent.ancestor_links.first(:conditions => {:ancestor_id => ancestor.id, :distance => child_link.distance})
+                end
+                link.destroy unless another_parent_with_same_distance
+              end
+            end
+          end
+        end
+      end
     end
     # END LINKING FUNCTIONS
 
@@ -370,7 +396,7 @@ module ActsAsDAG
   end
 
   module LinkClassInstanceMethods
-    def validate
+    def not_circular_link
       errors.add_to_base("Circular #{self.class} cannot be created.") if parent_id == child_id
     end
   end
