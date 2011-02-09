@@ -260,6 +260,22 @@ module ActsAsDAG
       self.class.descendant_type
     end
 
+    def child_ids
+      child_links.collect(&:child_id)
+    end
+
+    def parent_ids
+      parent_links.collect(&:parent_id)
+    end
+    
+    def descendant_ids
+      descendant_links.collect(&:descendant_id)
+    end
+
+    def ancestor_ids
+      ancestor_links.collect(&:ancestor_id)
+    end
+
     # CALLBACKS
     def initialize_links
       link_type.new(:parent_id => nil, :child_id => id).save! unless @create_links.eql? false
@@ -330,41 +346,53 @@ module ActsAsDAG
       # Raise an exception if there is no child
       raise "Child cannot be nil when deleting a category_link" unless child
 
-      parent_id_constraint = parent ? "parent_id = #{parent.id}" : "parent_id IS NULL"
-      child_id_constraint = "child_id = #{child.id}"
-
       # delete the links
-      link_type.delete_all("#{parent_id_constraint} AND #{child_id_constraint}")
+      link_type.delete_all(:parent_id => (parent ? parent.id : nil), :child_id => child.id)
 
-      # update descendants listing by deleting all links from the parent and its
-      # ancestors to the child and its descendants
+      # If the parent was nil, we don't need to update descendants because there are no descendants of nil
+      return unless parent
+      
+      # We have unlinked C and D
+      #                 A   F
+      #                / \ /
+      #               B   C
+      #               |   
+      #               |   D
+      #                \ /
+      #                 E
+      #
+      # Now destroy all affected descendant_links (ancestors of parent (C), descendants of child (D))
+      descendant_type.delete_all(:ancestor_id => parent.ancestor_ids, :descendant_id => child.descendant_ids)
+      
+      # Now iterate through all ancestors of the descendant_links that were deleted and pick only those that have no parents, namely (A, D)
+      # These will be the starting points for the recreation of descendant links
+      starting_points = self.class.find(parent.ancestor_ids + child.descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
+      starting_points.each{|node| node.send(:rebuild_descendant_links)}
+    end
 
-      # No need to delete any descendants if the parent is nil, since nothing in the descendants table descends from nil.
-      if parent.present?
-        # Delete all descendant links that have the incorrect distance between parent and child.
-        parent.ancestors.each do |ancestor|
-          ancestor.descendant_links.each do |link|
-            # + totem => totem pole 1
-            # + totem => big totem pole 2
-            # - totem => big model totem pole 2
-            # + totem => big model totem pole 3
-            # - totem => big red model totem pole 3
-            # + totem => big red model totem pole 4
-            
-            # * big model totem pole => big model totem pole 0
-            # big red model totem pole => big red model totem pole 1
-            if child_link = child.descendant_links.detect {|child_link| child_link.descendant_id == link.descendant_id}
-              if link.distance ==  ancestor_distance + 1 + child_link.distance
-                another_parent_with_same_distance = link.descendant.parents.any? do |parent|
-                  parent.ancestor_links.first(:conditions => {:ancestor_id => ancestor.id, :distance => child_link.distance})
-                end
-                link.destroy unless another_parent_with_same_distance
-              end
-            end
-          end
-        end
+    # Create a descendant link to iteself, then iterate through all children
+    # We add this node to the ancestor array we received
+    # Then we create a descendant link between it and all nodes in the array we were passed (nodes traversed between it and all its ancestors affected by the unlinking).          
+    # Then iterate to all children of the current node passing the ancestor array along
+    def rebuild_descendant_links(ancestors = [])
+      logger.info {"rebuilding descendant links of #{self.name}"}
+      # Add self to the list of traversed nodes that we will pass to the children we decide to recurse to
+      ancestors << self
+      
+      # Create descendant links to each ancestor in the array (including itself)
+      ancestors.reverse.each_with_index do |ancestor, index|
+        logger.info {"#{ancestor.name} is an ancestor of #{self.name} with distance #{index}"}
+        descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(:ancestor_id => ancestor.id, :descendant_id => self.id, :distance => index).save!
+      end
+      
+      # Now check each child to see if it is a descendant, or if we need to recurse
+      dids = descendant_ids
+      for child in children
+        logger.info {"Recursing to #{child.name}"}
+        child.send(:rebuild_descendant_links, ancestors)
       end
     end
+    
     # END LINKING FUNCTIONS
 
     # GARBAGE COLLECTION

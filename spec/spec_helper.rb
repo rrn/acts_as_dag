@@ -3,7 +3,7 @@ require 'active_record'
 require 'logger'
 require 'acts_as_dag'
 
-ActiveRecord::Base.logger = Logger.new(nil)
+ActiveRecord::Base.logger = Logger.new(STDOUT)
 ActiveRecord::Base.establish_connection(:adapter => "sqlite3", :database => ":memory:")
 
 ActiveRecord::Schema.define(:version => 0) do
