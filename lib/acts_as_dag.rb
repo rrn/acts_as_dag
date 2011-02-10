@@ -118,14 +118,14 @@ module ActsAsDAG
             # Remove its parents and place it under its sibling
             if current_category.should_descend_from?(sibling)
               logger.info "Reorganizing: #{current_category.name} should descend from #{sibling.name}"
-              
-              # add the current_category as a child of its sibling
-              sibling.add_child(current_category)
-              
+
               if parent
                 # This category no long descends from its parent
                 parent.remove_child(current_category)
               end
+              
+              # add the current_category as a child of its sibling
+              sibling.add_child(current_category)              
               
               # Break out of the inner loop because we've moved the current category
               # underneath one of its siblings and don't need to keep looking for a new parent
@@ -367,6 +367,9 @@ module ActsAsDAG
       # Now iterate through all ancestors of the descendant_links that were deleted and pick only those that have no parents, namely (A, D)
       # These will be the starting points for the recreation of descendant links
       starting_points = self.class.find(parent.ancestor_ids + child.descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
+      logger.info {"starting points are #{starting_points.collect(&:name).to_sentence}" }
+
+      # POSSIBLE OPTIMIZATION: The two starting points may share descendants. We only need to process each node once, so if we could skip dups, that would be good
       starting_points.each{|node| node.send(:rebuild_descendant_links)}
     end
 
@@ -375,22 +378,28 @@ module ActsAsDAG
     # Then we create a descendant link between it and all nodes in the array we were passed (nodes traversed between it and all its ancestors affected by the unlinking).          
     # Then iterate to all children of the current node passing the ancestor array along
     def rebuild_descendant_links(ancestors = [])
-      logger.info {"rebuilding descendant links of #{self.name}"}
+      indent = ""
+      ancestors.size.times do |index|
+        indent << "  "
+      end
+
+      logger.info {"#{indent}Rebuilding descendant links of #{self.name}"}
       # Add self to the list of traversed nodes that we will pass to the children we decide to recurse to
       ancestors << self
       
       # Create descendant links to each ancestor in the array (including itself)
       ancestors.reverse.each_with_index do |ancestor, index|
-        logger.info {"#{ancestor.name} is an ancestor of #{self.name} with distance #{index}"}
+        logger.info {"#{indent}#{ancestor.name} is an ancestor of #{self.name} with distance #{index}"}
         descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(:ancestor_id => ancestor.id, :descendant_id => self.id, :distance => index).save!
       end
       
       # Now check each child to see if it is a descendant, or if we need to recurse
       dids = descendant_ids
       for child in children
-        logger.info {"Recursing to #{child.name}"}
-        child.send(:rebuild_descendant_links, ancestors)
+        logger.info {"#{indent}Recursing to #{child.name}"}
+        child.send(:rebuild_descendant_links, ancestors.dup)
       end
+      logger.info {"#{indent}Done recursing"}
     end
     
     # END LINKING FUNCTIONS
