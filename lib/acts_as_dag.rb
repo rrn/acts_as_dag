@@ -111,34 +111,21 @@ module ActsAsDAG
           siblings = starting_nodes
         end
 
-        # Cross compare each sibling.
         for current_category in siblings
           for sibling in siblings
-            # If this category should descend from any other sibling,
-            # Remove its parents and place it under its sibling
-            if current_category.should_descend_from?(sibling)
-              logger.info "Reorganizing: #{current_category.name} should descend from #{sibling.name}"
-
+            if current_category.plinko(sibling)
+              logger.info "Reorganizing: #{sibling.name} should descend from #{current_category.name}"              
               if parent
                 # This category no long descends from its parent
                 parent.remove_child(current_category)
-              end
-              
-              # add the current_category as a child of its sibling
-              sibling.add_child(current_category)              
-              
+              end              
               # Break out of the inner loop because we've moved the current category
               # underneath one of its siblings and don't need to keep looking for a new parent
-              break
+              break              
             end
           end
         end
-
-        # Recurse down the hierarchy applying the same rules to each level
-        siblings.each do |category|
-          reorganize(category)
-        end
-      end
+      end      
 
       # Return all categories whose name contains the all the words in +string+
       # Options:
@@ -181,6 +168,19 @@ module ActsAsDAG
     # Reorganizes all children of this category (self)
     def reorganize
       self.class.reorganize(self)
+    end
+
+    # Searches all descendants for the best parent for the other
+    # i.e. it lets you drop the category in at the top and it drops down the list until it finds its final resting place
+    def plinko(other)
+      if other.should_descend_from?(self)
+        # Sort the descendants (including self) by the number of matching words and reverse it so the most matching words are first
+        # Then find the first one that +other+ should descend from
+        if new_parent = descendants.sort_by{|category| self.matching_word_count(category)}.reverse.detect{|category| other.should_descend_from?(category)}
+          other.add_parent(new_parent)
+          true
+        end
+      end
     end
 
     # Adds a category as a parent of this category (self)
@@ -227,29 +227,20 @@ module ActsAsDAG
       descendant_type.count(:conditions => sql) > 0 ? true : false
     end
 
-    # Checks if self should descend from possible_ancestor based on name matching
-    # Returns true if self contains all the words from ancestor, but has words that are not contained in ancestor
-    def should_descend_from?(ancestor)
-      ancestor_name_words = ancestor.name.split
-      descendant_name_words = self.name.split
-
-      # Delete all the words contained in the ancestor's name from the descendant's name
-      # Return false, if one of the words is not contained in the descendant's name
-      for word in ancestor_name_words
-        if index = descendant_name_words.index(word)
-          descendant_name_words.delete_at(index)
-        else
-          return false
-        end
-      end
-
-      # Check if there are still words remaining in the list of descendant words
-      # If there are, it means that the descendant name contains all the words from the ancestor, plus some others, and is therefore a descendant
-      if descendant_name_words.empty?
-        return false
-      else
-        return true
-      end
+    # Checks if self should descend from +other+ based on name matching
+    # Returns true if self contains all the words from +other+, but has words that are not contained in +other+
+    def should_descend_from?(other)
+      other_words = other.name.split
+      self_words = self.name.split
+      
+      # (self contains all the words from other and more) && (other contains no words that are not also in self)
+      return (self_words - (other_words & self_words)).count > 0 && (other_words - self_words).count == 0
+    end
+    
+    def matching_word_count(other)
+      other_words = other.name.split
+      self_words = self.name.split
+      return (other_words & self_words).count
     end
     
     def link_type
