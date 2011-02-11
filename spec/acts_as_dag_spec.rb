@@ -67,6 +67,16 @@ describe 'acts_as_dag' do
       @dad.descendants.should == [@dad,@child]
       @dad.children.should == [@child]
     end
+    
+    it "should be able to test descent" do
+      @dad.add_child(@child)
+      @grandpa.add_child(@dad)
+
+      @grandpa.ancestor_of?(@child).should be_true
+      @child.descendant_of?(@grandpa).should be_true
+      @child.ancestor_of?(@grandpa).should be_false
+      @grandpa.descendant_of?(@child).should be_false
+    end    
   end
 
   describe "reorganization" do
@@ -84,19 +94,12 @@ describe 'acts_as_dag' do
     end
 
     it "should arrange the categories correctly when not passed any arguments" do
-      puts "Roots #{MyModel.roots.collect{|r| r.name + " " + r.id.to_s}.sort.to_sentence}"
-      puts "reorganizing"
       MyModel.reorganize
-      puts "done reorganizing"
-      ids = [@totem, @totem_pole, @big_totem_pole, @big_model_totem_pole, @big_red_model_totem_pole].collect(&:id)
-      MyModel.new.link_type.all.each do |l|
-        puts "#{l.parent ? l.parent.name : 'Root'} => #{l.child.name}"
-      end
       
-      @totem.reload.children.should == [@totem_pole]
-      @totem_pole.reload.children.should == [@big_totem_pole]
-      @big_totem_pole.reload.children.should == [@big_model_totem_pole]
-      @big_model_totem_pole.reload.children.should == [@big_red_model_totem_pole]
+      @totem.children.should == [@totem_pole]
+      @totem_pole.children.should == [@big_totem_pole]
+      @big_totem_pole.children.should == [@big_model_totem_pole]
+      @big_model_totem_pole.children.should == [@big_red_model_totem_pole]
     end
 
     it "should arrange the categories correctly when passed a set of nodes to reorganize" do
@@ -107,6 +110,29 @@ describe 'acts_as_dag' do
       @big_totem_pole.reload.children.should == [@big_model_totem_pole]
       @big_model_totem_pole.reload.children.should == [@big_red_model_totem_pole]
     end
+
+    it "should arrange the categories correctly when inserting a category into an existing chain" do
+      @totem.add_child(@big_totem_pole)
+
+      MyModel.reorganize      
+
+      @totem.children.should == [@totem_pole]
+      @totem_pole.children.should == [@big_totem_pole]
+      @big_totem_pole.children.should == [@big_model_totem_pole]
+      @big_model_totem_pole.reload.children.should == [@big_red_model_totem_pole]
+    end
+  
+    it "should still work when there are categories that are permutations of each other" do
+      @big_totem_pole_model = MyModel.create(:name => "big totem pole model")
+
+      MyModel.reorganize [@totem, @totem_pole, @big_totem_pole, @big_model_totem_pole, @big_red_model_totem_pole, @big_totem_pole_model]
+
+      @totem.children.should == [@totem_pole]
+      @totem_pole.children.should == [@big_totem_pole]
+      @big_totem_pole.children.should == [@big_model_totem_pole, @big_totem_pole_model]
+      @big_model_totem_pole.reload.children.should == [@big_red_model_totem_pole]
+      @big_totem_pole_model.reload.children.should == [@big_red_model_totem_pole]
+    end  
 
     describe "when there is a single long inheritance chain" do
       before(:each) do

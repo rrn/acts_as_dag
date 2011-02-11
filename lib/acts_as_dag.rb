@@ -58,15 +58,6 @@ module ActsAsDAG
       
       include ActsAsDAG::InstanceMethods
 
-      attr_reader :create_links, :create_descendants
-
-      def initialize(params = {})
-        # allow user to disable creation of DAG entries on creation
-        @create_links = params.delete(:create_links)
-        @create_descendants = params.delete(:create_descendants)
-        super(params)
-      end
-      
       after_create :initialize_links
       after_create :initialize_descendants
 
@@ -110,18 +101,18 @@ module ActsAsDAG
           # When we pass an array and want each node reorganized
           siblings = starting_nodes
         end
-
+        
+        logger.info {"reorganizing #{siblings.collect(&:name).to_sentence}#{' which are children of ' + parent.name if parent}"}
         for current_category in siblings
           for sibling in siblings
-            if current_category.plinko(sibling)
-              logger.info "Reorganizing: #{sibling.name} should descend from #{current_category.name}"              
-              if parent
-                # This category no long descends from its parent
-                parent.remove_child(current_category)
-              end              
-              # Break out of the inner loop because we've moved the current category
-              # underneath one of its siblings and don't need to keep looking for a new parent
-              break              
+            next if current_category == sibling
+            if sibling.should_descend_from? current_category
+              logger.info "#{sibling.name} should descend from #{current_category.name}"
+
+              # This category no longer descends from its parent
+              parent.remove_child(sibling) if parent
+
+              current_category.plinko(sibling)
             end
           end
         end
@@ -178,19 +169,24 @@ module ActsAsDAG
         # Then find the first one that +other+ should descend from
         if new_parent = descendants.sort_by{|category| self.matching_word_count(category)}.reverse.detect{|category| other.should_descend_from?(category)}
           other.add_parent(new_parent)
-          true
+          # Reorganize the children of the new parent because the category we just added might be a potential parent of one of its new siblings
+          new_parent.reorganize
+
+          # We've just affected the associations in ways we can not possibly imagine, so let's just reload
+          self.reload 
+          return true
         end
       end
     end
 
     # Adds a category as a parent of this category (self)
-    def add_parent(parent, metadata = {})
-      link(parent, self, metadata)
+    def add_parent(parent)
+      link(parent, self)
     end
 
     # Adds a category as a child of this category (self)
-    def add_child(child, metadata = {})
-      link(self, child, metadata)
+    def add_child(child)
+      link(self, child)
     end
 
     # Removes a category as a child of this category (self)
@@ -220,11 +216,13 @@ module ActsAsDAG
     end
 
     # Returns true if the category's descendants include *self*
-    # Excludes self from list of results if params[:exclude_self] != false
-    def descends_from?(category, options = {})
-      sql = "ancestor_id = #{category.id} AND descendant_id = #{self.id}"
-      sql << " AND distance > 0" if options[:exclude_self]
-      descendant_type.count(:conditions => sql) > 0 ? true : false
+    def descendant_of?(category, options = {})
+      ancestors.exists?(category)
+    end
+
+    # Returns true if the category's descendants include *self*
+    def ancestor_of?(category, options = {})
+      descendants.exists?(category)
     end
 
     # Checks if self should descend from +other+ based on name matching
@@ -269,11 +267,11 @@ module ActsAsDAG
 
     # CALLBACKS
     def initialize_links
-      link_type.new(:parent_id => nil, :child_id => id).save! unless @create_links.eql? false
+      link_type.new(:parent_id => nil, :child_id => id).save!
     end
 
     def initialize_descendants
-      descendant_type.new(:ancestor_id => id, :descendant_id => id, :distance => 0).save! unless @create_descendants.eql? false
+      descendant_type.new(:ancestor_id => id, :descendant_id => id, :distance => 0).save!
     end
     # END CALLBACKS
 
@@ -283,20 +281,17 @@ module ActsAsDAG
 
     # creates a single link in the given link_type's link table between parent and
     # child object ids and creates the appropriate entries in the descendant table
-    def link(parent, child, metadata = {})
-      logger.info "link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"
+    def link(parent, child)
+#      logger.info "link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"
 
       # Check if parent and child have id's
       raise "Parent has no ID" if parent.id.nil?
       raise "Child has no ID" if child.id.nil?
 
       # Create a new parent-child link
-      new_link = link_type.find_or_initialize_by_parent_id_and_child_id(:parent_id => parent.id, :child_id => child.id)
-
       # Return unless the save created a new database entry and was not replaced with an existing database entry.
       # If we found one that already exists, we can assume that the proper descendants already exist too
-      if new_link.new_record?
-        new_link.attributes = metadata
+      if new_link = link_type.find_or_initialize_by_parent_id_and_child_id(:parent_id => parent.id, :child_id => child.id)
         new_link.save!
       else
         logger.info "Skipping #{descendant_type} update because the link #{link_type} ##{new_link.id} already exists"
@@ -315,24 +310,18 @@ module ActsAsDAG
       child_descendant_links = descendant_type.find(:all, :conditions => { :ancestor_id => child.id }) # (totem pole model => totem pole model)
       for parent_ancestor_link in parent_ancestor_links
         for child_descendant_link in child_descendant_links
-          descendant_link = descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(:ancestor_id => parent_ancestor_link.ancestor_id, 
+          descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(:ancestor_id => parent_ancestor_link.ancestor_id, 
           :descendant_id => child_descendant_link.descendant_id, 
-          :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1)
-          
-          descendant_link.attributes = metadata
-          descendant_link.save!
+          :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1).save!
         end
       end
     end
 
     # breaks a single link in the given hierarchy_link_table between parent and
     # child object id. Updates the appropriate Descendants table entries
-    def unlink(parent, child) # tp => bmtp
-      parent_name = parent ? parent.name : 'Root'
-      child_name = child.name
-
+    def unlink(parent, child)
       descendant_table_string = descendant_type.to_s
-      logger.info "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent_name}, child = #{child_name})"
+#      logger.info "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent ? parent.name : 'nil'}, child = #{child.name})"
 
       # Raise an exception if there is no child
       raise "Child cannot be nil when deleting a category_link" unless child
