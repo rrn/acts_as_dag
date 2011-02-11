@@ -116,41 +116,6 @@ module ActsAsDAG
             end
           end
         end
-      end      
-
-      # Return all categories whose name contains the all the words in +string+
-      # Options:
-      #   :exclude_exact_match    - exclude any categories whose name matches the search string exactly
-      #   :exclude                - ensures that the single record, or array of records passed to not appear in the results
-      def self.find_matches(string, options = {})
-        # Create a 'similar to' condition for each word in the string
-        sql = Array.new
-        vars = Array.new
-        for word in string.split
-          sql << "name ~ ?"
-          vars << "\\y#{Regexp.escape(word)}\\y"
-        end
-
-        # Optionally Exclude records with a name exactly matching the search string
-        if options[:exclude_exact_match]
-          sql << "name != ?"
-          vars << string
-        end
-
-        # Optionally exclude results from the return values ( eg. if you don't want to return the item you're finding matches for )
-        if options[:exclude].is_a?(self.class)
-          sql << "id != ?"
-          sql << options[:exclude].id
-        elsif options[:exclude].is_a?(Array) && !options[:exclude].empty?
-          exclusion_list = options[:exclude].collect{|record| record.id}
-          sql << "id NOT IN (?)"
-          vars << exclusion_list.join(',')
-        end
-
-        # Create the conditions array so rails will escape it.
-        conditions = [sql.join(' AND ')].concat(vars)
-
-        return find(:all, :conditions => conditions)
       end
     end
   end
