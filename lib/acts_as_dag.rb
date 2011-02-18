@@ -132,7 +132,7 @@ module ActsAsDAG
       if other.should_descend_from?(self)
         # Sort the descendants (including self) by the number of matching words and reverse it so the most matching words are first
         # Then find the first one that +other+ should descend from
-        if new_parent = descendants.sort_by{|category| self.matching_word_count(category)}.reverse.detect{|category| other.should_descend_from?(category)}
+        if new_parent = descendants.sort_by{|category| other.matching_word_count(category)}.reverse.detect{|category| other.should_descend_from?(category)}
           other.add_parent(new_parent)
           # Reorganize the children of the new parent because the category we just added might be a potential parent of one of its new siblings
           new_parent.reorganize
