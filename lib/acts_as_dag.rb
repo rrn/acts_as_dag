@@ -61,7 +61,7 @@ module ActsAsDAG
       after_create :initialize_links
       after_create :initialize_descendants
 
-      named_scope :roots, {:joins => :parent_links, :conditions => "parent_id IS NULL"}
+      scope :roots, joins(:parent_links).where(:parent_id => nil)
 
       # Remove all hierarchy information for this category
       def reset_hierarchy
