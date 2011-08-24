@@ -254,13 +254,12 @@ module ActsAsDAG
       raise "Child has no ID" if child.id.nil?
 
       # Create a new parent-child link
-      # Return unless the save created a new database entry and was not replaced with an existing database entry.
-      # If we found one that already exists, we can assume that the proper descendants already exist too
-      if new_link = link_type.find_or_initialize_by_parent_id_and_child_id(:parent_id => parent.id, :child_id => child.id)
-        new_link.save!
-      else
-        logger.info "Skipping #{descendant_type} update because the link #{link_type} ##{new_link.id} already exists"
+      # Return if the link already exists because we can assume that the proper descendants already exist too
+      if link_type.where(:parent_id => parent.id, :child_id => child.id).exists?
+        logger.info "Skipping #{descendant_type} update because the link already exists"
         return
+      else        
+        link_type.create!(:parent_id => parent.id, :child_id => child.id)
       end
 
       # If we have been passed a parent, find and destroy any existing links from nil (root) to the child as it can no longer be a top-level node
@@ -275,9 +274,7 @@ module ActsAsDAG
       child_descendant_links = descendant_type.find(:all, :conditions => { :ancestor_id => child.id }) # (totem pole model => totem pole model)
       for parent_ancestor_link in parent_ancestor_links
         for child_descendant_link in child_descendant_links
-          descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(:ancestor_id => parent_ancestor_link.ancestor_id, 
-          :descendant_id => child_descendant_link.descendant_id, 
-          :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1).save!
+          descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(:ancestor_id => parent_ancestor_link.ancestor_id, :descendant_id => child_descendant_link.descendant_id, :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1).save!
         end
       end
     end
