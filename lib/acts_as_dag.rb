@@ -67,7 +67,7 @@ module ActsAsDAG
       # Can pass a list of categories and only those will be reorganized
       def reorganize(categories_to_reorganize = self.all)
         reset_hierarchy(categories_to_reorganize)
-        
+
         word_count_groups = categories_to_reorganize.group_by(&:word_count).sort
         roots = word_count_groups.first[1].dup.sort_by(&:name)  # We will build up a list of plinko targets, we start with the group of categories with the shortest word count
 
@@ -75,7 +75,7 @@ module ActsAsDAG
         # If we can't plinko one, then it gets added as a root
         word_count_groups[1..-1].each do |word_count, categories|
           categories_with_no_parents = []
-          
+
           # Try drop each category into each root
           categories.sort_by(&:name).each do |category|
             suitable_parent = false
@@ -87,7 +87,7 @@ module ActsAsDAG
               categories_with_no_parents << category       
             end
           end
-          
+
           # Add all categories from this group without suitable parents to the roots
           if categories_with_no_parents.present?
             logger.info "Adding #{categories_with_no_parents.collect(&:name).join(', ')} to roots"
@@ -122,7 +122,7 @@ module ActsAsDAG
 
         # Find the descendants of this category that +other+ should descend from 
         descendants_other_should_descend_from = self.descendants.select{|descendant| other.should_descend_from?(descendant)}
-        
+
         # Of those, find the categories with the most number of matching words and make +other+ their child
         # We find all suitable candidates to provide support for categories whose names are permutations of each other
         # e.g. 'goat wool fibre' should be a child of 'goat wool' and 'wool goat' if both are present under 'goat'
@@ -138,6 +138,18 @@ module ActsAsDAG
           return true
         end
       end
+    end
+
+    # Convenience method for plinkoing multiple categories
+    # Plinko's multiple categories from shortest to longest in order to prevent the need for reorganization
+    def plinko_multiple(others)
+      groups = others.group_by(&:word_count).sort
+      groups.each do |word_count, categories|
+        categories.each do |category|
+          unless plinko(category)
+          end
+        end
+      end    
     end
 
     # Adds a category as a parent of this category (self)
@@ -260,7 +272,7 @@ module ActsAsDAG
       if link_type.where(:parent_id => parent.id, :child_id => child.id).exists?
         logger.info "Skipping #{descendant_type} update because the link already exists"
         return
-      else        
+      else
         link_type.create!(:parent_id => parent.id, :child_id => child.id)
       end
 
