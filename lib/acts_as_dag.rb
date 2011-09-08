@@ -12,7 +12,7 @@ module ActsAsDAG
       class_eval <<-EOV
       class ::#{link_class} < ActiveRecord::Base
         include ActsAsDAG::LinkClassInstanceMethods
-        
+
         validate :not_circular_link
 
         belongs_to :parent, :class_name => '#{self.name}', :foreign_key => 'parent_id'
@@ -55,7 +55,7 @@ module ActsAsDAG
       has_many :descendant_links, :class_name => '#{descendant_class}', :foreign_key => 'ancestor_id', :dependent => :destroy
       has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
       EOV
-      
+
       include ActsAsDAG::InstanceMethods
 
       after_create :initialize_links
@@ -63,82 +63,78 @@ module ActsAsDAG
 
       scope :roots, joins(:parent_links).where(link_type.table_name => {:parent_id => nil})
 
-      # Remove all hierarchy information for this category
-      def reset_hierarchy
-        logger.info "Clearing #{self.name} hierarchy links"
-        link_type.delete_all
-        find_each(&:initialize_links)
-
-        logger.info "Clearing #{self.name} hierarchy descendants"
-        descendant_type.delete_all
-        find_each(&:initialize_descendants)
-      end
-
-      # Reorganizes the entire class of records, first resetting the hierarchy, then reoganizing
-      def reorganize_all
-        # Reorganize categories that need reorganization
-        # Remove all hierarchy information for categories we're going to rearrange so
-        # all categories are processed and we avoid the following situation:
-        # e.g. ivory -> walrus ivory. then walrus added, but doesn't see walrus ivory
-        # because it's under ivory and not at the top level
-        reset_hierarchy
-        reorganize
-      end
-
-      # Organizes sibling categories based on their name.
-      # eg. "fibre" -> "hemp fibre" has a sibling "indian hemp fibre",
-      # "indian hemp fibre" needs to be reorganized underneath "hemp fibre" because of its name
-      def reorganize(starting_nodes = nil)
-        case starting_nodes
-        when self
-          # When we pass an instance of this class and want its children reorganized
-          parent = starting_nodes
-          siblings = starting_nodes.children
-        when nil
-          # When we pass nothing and want all root nodes reorganized
-          siblings = self.roots
-        else
-          # When we pass an array and want each node reorganized
-          siblings = starting_nodes
-        end
+      # Reorganizes the entire class of records based on their name, first resetting the hierarchy, then reoganizing
+      # Can pass a list of categories and only those will be reorganized
+      def reorganize(categories_to_reorganize = self.all)
+        reset_hierarchy(categories_to_reorganize)
         
-        logger.info {"reorganizing #{siblings.collect(&:name).to_sentence}#{' which are children of ' + parent.name if parent}"}
-        for current_category in siblings
-          for sibling in siblings
-            next if current_category == sibling
-            if sibling.should_descend_from? current_category
-              logger.info "#{sibling.name} should descend from #{current_category.name}"
+        word_count_groups = categories_to_reorganize.group_by(&:word_count).sort
+        roots = word_count_groups.first[1].dup.sort_by(&:name)  # We will build up a list of plinko targets, we start with the group of categories with the shortest word count
 
-              # This category no longer descends from its parent
-              parent.remove_child(sibling) if parent
-
-              current_category.plinko(sibling)
+        # Now plinko the next shortest word group into those targets
+        # If we can't plinko one, then it gets added as a root
+        word_count_groups[1..-1].each do |word_count, categories|
+          categories_with_no_parents = []
+          
+          # Try drop each category into each root
+          categories.sort_by(&:name).each do |category|
+            suitable_parent = false
+            roots.each do |root|
+              suitable_parent = true if root.plinko(category)
+            end
+            unless suitable_parent
+              logger.info "Plinko couldn't find a suitable parent for #{category.name}"
+              categories_with_no_parents << category       
             end
           end
+          
+          # Add all categories from this group without suitable parents to the roots
+          if categories_with_no_parents.present?
+            logger.info "Adding #{categories_with_no_parents.collect(&:name).join(', ')} to roots"
+            roots.concat categories_with_no_parents
+          end
         end
+      end
+
+      # Remove all hierarchy information for this category
+      # Can pass a list of categories to reset
+      def reset_hierarchy(categories_to_reset = self.all)
+        ids = categories_to_reset.collect(&:id)
+        logger.info "Clearing #{self.name} hierarchy links"
+        link_type.delete_all(:parent_id => ids)
+        link_type.delete_all(:child_id => ids)
+        categories_to_reset.each(&:initialize_links)
+
+        logger.info "Clearing #{self.name} hierarchy descendants"
+        descendant_type.delete_all(:descendant_id => ids)
+        descendant_type.delete_all(:ancestor_id => ids)
+        categories_to_reset.each(&:initialize_descendants)
       end
     end
   end
 
   module InstanceMethods
-    # Reorganizes all children of this category (self)
-    def reorganize
-      self.class.reorganize(self)
-    end
-
     # Searches all descendants for the best parent for the other
     # i.e. it lets you drop the category in at the top and it drops down the list until it finds its final resting place
     def plinko(other)
       if other.should_descend_from?(self)
-        # Sort the descendants (including self) by the number of matching words and reverse it so the most matching words are first
-        # Then find the first one that +other+ should descend from
-        if new_parent = descendants.sort_by{|category| other.matching_word_count(category)}.reverse.detect{|category| other.should_descend_from?(category)}
-          other.add_parent(new_parent)
-          # Reorganize the children of the new parent because the category we just added might be a potential parent of one of its new siblings
-          new_parent.reorganize
+        logger.info "Plinkoing '#{other.name}' into '#{self.name}'..."
 
-          # We've just affected the associations in ways we can not possibly imagine, so let's just reload
-          self.reload 
+        # Find the descendants of this category that +other+ should descend from 
+        descendants_other_should_descend_from = self.descendants.select{|descendant| other.should_descend_from?(descendant)}
+        
+        # Of those, find the categories with the most number of matching words and make +other+ their child
+        # We find all suitable candidates to provide support for categories whose names are permutations of each other
+        # e.g. 'goat wool fibre' should be a child of 'goat wool' and 'wool goat' if both are present under 'goat'
+        new_parents_group = descendants_other_should_descend_from.group_by{|category| other.matching_word_count(category)}.sort.reverse.first
+        if new_parents_group.present?
+          for new_parent in new_parents_group[1]
+            logger.info "  '#{other.name}' landed under '#{new_parent.name}'"
+            other.add_parent(new_parent)
+
+            # We've just affected the associations in ways we can not possibly imagine, so let's clear the association cache
+            self.clear_association_cache 
+          end
           return true
         end
       end
@@ -193,19 +189,25 @@ module ActsAsDAG
     # Checks if self should descend from +other+ based on name matching
     # Returns true if self contains all the words from +other+, but has words that are not contained in +other+
     def should_descend_from?(other)
+      return false if self == other
+
       other_words = other.name.split
       self_words = self.name.split
-      
+
       # (self contains all the words from other and more) && (other contains no words that are not also in self)
       return (self_words - (other_words & self_words)).count > 0 && (other_words - self_words).count == 0
     end
-    
+
+    def word_count
+      self.name.split.count
+    end
+
     def matching_word_count(other)
       other_words = other.name.split
       self_words = self.name.split
       return (other_words & self_words).count
     end
-    
+
     def link_type
       self.class.link_type
     end
@@ -221,7 +223,7 @@ module ActsAsDAG
     def parent_ids
       parent_links.collect(&:parent_id)
     end
-    
+
     def descendant_ids
       descendant_links.collect(&:descendant_id)
     end
@@ -241,13 +243,13 @@ module ActsAsDAG
     # END CALLBACKS
 
     private
-    
+
     # LINKING FUNCTIONS
 
     # creates a single link in the given link_type's link table between parent and
     # child object ids and creates the appropriate entries in the descendant table
     def link(parent, child)
-#      logger.info "link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"
+      #      logger.info "link(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_type}, parent = #{parent.name}, child = #{child.name})"
 
       # Check if parent and child have id's
       raise "Parent has no ID" if parent.id.nil?
@@ -283,7 +285,7 @@ module ActsAsDAG
     # child object id. Updates the appropriate Descendants table entries
     def unlink(parent, child)
       descendant_table_string = descendant_type.to_s
-#      logger.info "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent ? parent.name : 'nil'}, child = #{child.name})"
+      #      logger.info "unlink(hierarchy_link_table = #{link_type}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent ? parent.name : 'nil'}, child = #{child.name})"
 
       # Raise an exception if there is no child
       raise "Child cannot be nil when deleting a category_link" unless child
@@ -293,7 +295,7 @@ module ActsAsDAG
 
       # If the parent was nil, we don't need to update descendants because there are no descendants of nil
       return unless parent
-      
+
       # We have unlinked C and D
       #                 A   F
       #                / \ /
@@ -305,7 +307,7 @@ module ActsAsDAG
       #
       # Now destroy all affected descendant_links (ancestors of parent (C), descendants of child (D))
       descendant_type.delete_all(:ancestor_id => parent.ancestor_ids, :descendant_id => child.descendant_ids)
-      
+
       # Now iterate through all ancestors of the descendant_links that were deleted and pick only those that have no parents, namely (A, D)
       # These will be the starting points for the recreation of descendant links
       starting_points = self.class.find(parent.ancestor_ids + child.descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
@@ -328,13 +330,13 @@ module ActsAsDAG
       logger.info {"#{indent}Rebuilding descendant links of #{self.name}"}
       # Add self to the list of traversed nodes that we will pass to the children we decide to recurse to
       ancestors << self
-      
+
       # Create descendant links to each ancestor in the array (including itself)
       ancestors.reverse.each_with_index do |ancestor, index|
         logger.info {"#{indent}#{ancestor.name} is an ancestor of #{self.name} with distance #{index}"}
         descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(:ancestor_id => ancestor.id, :descendant_id => self.id, :distance => index).save!
       end
-      
+
       # Now check each child to see if it is a descendant, or if we need to recurse
       dids = descendant_ids
       for child in children
@@ -343,7 +345,7 @@ module ActsAsDAG
       end
       logger.info {"#{indent}Done recursing"}
     end
-    
+
     # END LINKING FUNCTIONS
 
     # GARBAGE COLLECTION

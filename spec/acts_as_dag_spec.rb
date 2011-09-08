@@ -1,7 +1,10 @@
 require 'spec_helper'
 
 describe 'acts_as_dag' do
-
+  before(:each) do
+    MyModel.destroy_all # Because we're using sqlite3 and it doesn't support transactional specs (afaik)
+  end
+  
   describe "Basics" do
     before(:each) do
       @grandpa = MyModel.create(:name => 'grandpa')
@@ -114,7 +117,7 @@ describe 'acts_as_dag' do
     it "should arrange the categories correctly when inserting a category into an existing chain" do
       @totem.add_child(@big_totem_pole)
 
-      MyModel.reorganize      
+      MyModel.reorganize
 
       @totem.children.should == [@totem_pole]
       @totem_pole.children.should == [@big_totem_pole]
@@ -129,7 +132,7 @@ describe 'acts_as_dag' do
 
       @totem.children.should == [@totem_pole]
       @totem_pole.children.should == [@big_totem_pole]
-      @big_totem_pole.children.should == [@big_model_totem_pole, @big_totem_pole_model]
+      (@big_totem_pole.children - [@big_model_totem_pole, @big_totem_pole_model]).should == []
       @big_model_totem_pole.reload.children.should == [@big_red_model_totem_pole]
       @big_totem_pole_model.reload.children.should == [@big_red_model_totem_pole]
     end  
@@ -202,7 +205,6 @@ describe 'acts_as_dag' do
     describe "and a link between parent and ancestor is removed" do 
       before(:each) do
         # the incest is undone!
-        puts "test"
         @dad.remove_parent(@grandpa)
       end
 
