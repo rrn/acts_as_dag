@@ -283,9 +283,9 @@ module ActsAsDAG
       # The child and all its descendants need to be added as descendants of the parent
 
       # get parent ancestor id list
-      parent_ancestor_links = descendant_type.find(:all, :conditions => { :descendant_id => parent.id }) # (totem => totem pole), (totem_pole => totem_pole)
+      parent_ancestor_links = descendant_type.where(:descendant_id => parent.id) # (totem => totem pole), (totem_pole => totem_pole)
       # get child descendant id list
-      child_descendant_links = descendant_type.find(:all, :conditions => { :ancestor_id => child.id }) # (totem pole model => totem pole model)
+      child_descendant_links = descendant_type.where(:ancestor_id => child.id) # (totem pole model => totem pole model)
       for parent_ancestor_link in parent_ancestor_links
         for child_descendant_link in child_descendant_links
           descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(:ancestor_id => parent_ancestor_link.ancestor_id, :descendant_id => child_descendant_link.descendant_id, :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1).save!
@@ -364,7 +364,7 @@ module ActsAsDAG
     # Remove all entries from this object's table that are not associated in some way with an item
     def self.garbage_collect
       table_prefix = self.class.name.tableize
-      root_locations = self.class.find(:all, :conditions => "#{table_prefix}_links.parent_id IS NULL", :include => "#{table_prefix}_parents")
+      root_locations = self.class.includes("#{table_prefix}_parents").where("#{table_prefix}_links.parent_id IS NULL")
       for root_location in root_locations
         root_location.garbage_collect
       end
