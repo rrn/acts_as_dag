@@ -62,7 +62,9 @@ module ActsAsDAG
       after_create :initialize_descendants
 
       scope :roots, joins(:parent_links).where(link_type.table_name => {:parent_id => nil})
-
+      
+      def acts_like_dag?; true; end
+      
       # Remove all hierarchy information for this category
       def reset_hierarchy
         logger.info "Clearing #{self.name} hierarchy links"
