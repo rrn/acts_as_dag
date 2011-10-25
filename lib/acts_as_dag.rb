@@ -1,11 +1,6 @@
 module ActsAsDAG
   def self.included(base)
-    base.extend(ClassMethods)
-  end
-
-  module ClassMethods
-    def acts_as_dag(options = {})
-
+    def base.acts_as_dag(options = {})
       link_class = "#{self.name}Link"
       descendant_class = "#{self.name}Descendant"
 
@@ -35,10 +30,11 @@ module ActsAsDAG
       def self.descendant_type
         ::#{descendant_class}
       end
+      EOV
 
-      has_many :parent_links, :class_name => '#{link_class}', :foreign_key => 'child_id', :dependent => :destroy
+      has_many :parent_links, :class_name => link_class, :foreign_key => 'child_id', :dependent => :destroy
       has_many :parents, :through => :parent_links, :source => :parent
-      has_many :child_links, :class_name => '#{link_class}', :foreign_key => 'parent_id', :dependent => :destroy
+      has_many :child_links, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :destroy
       has_many :children, :through => :child_links, :source => :child
 
       # Ancestors must always be returned in order of most distant to least
@@ -50,68 +46,70 @@ module ActsAsDAG
       #  \ /
       #   D
       #
-      has_many :ancestor_links, :class_name => '#{descendant_class}', :foreign_key => 'descendant_id', :dependent => :destroy
+      has_many :ancestor_links, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :destroy
       has_many :ancestors, :through => :ancestor_links, :source => :ancestor, :order => "distance DESC"
-      has_many :descendant_links, :class_name => '#{descendant_class}', :foreign_key => 'ancestor_id', :dependent => :destroy
-      has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
-      EOV
-
-      include ActsAsDAG::InstanceMethods
+      has_many :descendant_links, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :destroy
+      has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"      
 
       after_create :initialize_links
       after_create :initialize_descendants
 
       scope :roots, joins(:parent_links).where(link_type.table_name => {:parent_id => nil})
       
-      def acts_like_dag?; true; end
+      extend ActsAsDAG::ClassMethods
+      include ActsAsDAG::InstanceMethods        
+    end
+  end
 
-      # Reorganizes the entire class of records based on their name, first resetting the hierarchy, then reoganizing
-      # Can pass a list of categories and only those will be reorganized
-      def reorganize(categories_to_reorganize = self.all)
-        reset_hierarchy(categories_to_reorganize)
+  module ClassMethods
+    def acts_like_dag?; true; end
 
-        word_count_groups = categories_to_reorganize.group_by(&:word_count).sort
-        roots = word_count_groups.first[1].dup.sort_by(&:name)  # We will build up a list of plinko targets, we start with the group of categories with the shortest word count
+    # Reorganizes the entire class of records based on their name, first resetting the hierarchy, then reoganizing
+    # Can pass a list of categories and only those will be reorganized
+    def reorganize(categories_to_reorganize = self.all)
+      reset_hierarchy(categories_to_reorganize)
 
-        # Now plinko the next shortest word group into those targets
-        # If we can't plinko one, then it gets added as a root
-        word_count_groups[1..-1].each do |word_count, categories|
-          categories_with_no_parents = []
+      word_count_groups = categories_to_reorganize.group_by(&:word_count).sort
+      roots = word_count_groups.first[1].dup.sort_by(&:name)  # We will build up a list of plinko targets, we start with the group of categories with the shortest word count
 
-          # Try drop each category into each root
-          categories.sort_by(&:name).each do |category|
-            suitable_parent = false
-            roots.each do |root|
-              suitable_parent = true if root.plinko(category)
-            end
-            unless suitable_parent
-              logger.info "Plinko couldn't find a suitable parent for #{category.name}"
-              categories_with_no_parents << category       
-            end
+      # Now plinko the next shortest word group into those targets
+      # If we can't plinko one, then it gets added as a root
+      word_count_groups[1..-1].each do |word_count, categories|
+        categories_with_no_parents = []
+
+        # Try drop each category into each root
+        categories.sort_by(&:name).each do |category|
+          suitable_parent = false
+          roots.each do |root|
+            suitable_parent = true if root.plinko(category)
           end
-
-          # Add all categories from this group without suitable parents to the roots
-          if categories_with_no_parents.present?
-            logger.info "Adding #{categories_with_no_parents.collect(&:name).join(', ')} to roots"
-            roots.concat categories_with_no_parents
+          unless suitable_parent
+            logger.info "Plinko couldn't find a suitable parent for #{category.name}"
+            categories_with_no_parents << category       
           end
         end
-      end
 
-      # Remove all hierarchy information for this category
-      # Can pass a list of categories to reset
-      def reset_hierarchy(categories_to_reset = self.all)
-        ids = categories_to_reset.collect(&:id)
-        logger.info "Clearing #{self.name} hierarchy links"
-        link_type.delete_all(:parent_id => ids)
-        link_type.delete_all(:child_id => ids)
-        categories_to_reset.each(&:initialize_links)
-
-        logger.info "Clearing #{self.name} hierarchy descendants"
-        descendant_type.delete_all(:descendant_id => ids)
-        descendant_type.delete_all(:ancestor_id => ids)
-        categories_to_reset.each(&:initialize_descendants)
+        # Add all categories from this group without suitable parents to the roots
+        if categories_with_no_parents.present?
+          logger.info "Adding #{categories_with_no_parents.collect(&:name).join(', ')} to roots"
+          roots.concat categories_with_no_parents
+        end
       end
+    end
+
+    # Remove all hierarchy information for this category
+    # Can pass a list of categories to reset
+    def reset_hierarchy(categories_to_reset = self.all)
+      ids = categories_to_reset.collect(&:id)
+      logger.info "Clearing #{self.name} hierarchy links"
+      link_type.delete_all(:parent_id => ids)
+      link_type.delete_all(:child_id => ids)
+      categories_to_reset.each(&:initialize_links)
+
+      logger.info "Clearing #{self.name} hierarchy descendants"
+      descendant_type.delete_all(:descendant_id => ids)
+      descendant_type.delete_all(:ancestor_id => ids)
+      categories_to_reset.each(&:initialize_descendants)
     end
   end
 
