@@ -53,7 +53,7 @@ module ActsAsDAG
 
       after_create :initialize_links
       after_create :initialize_descendants
-
+      
       scope :roots, joins(:parent_links).where(link_type.table_name => {:parent_id => nil})
       
       extend ActsAsDAG::ClassMethods
@@ -228,20 +228,28 @@ module ActsAsDAG
       self.class.descendant_type
     end
 
-    def child_ids
-      child_links.collect(&:child_id)
+    def fast_child_ids
+      connection.select_values(self.class.link_type.select(:child_id).where(:parent_id => self.id).to_sql)
     end
 
-    def parent_ids
-      parent_links.collect(&:parent_id)
+    def fast_parent_ids
+      connection.select_values(self.class.link_type.select(:parent_id).where(:child_id => self.id).to_sql)
     end
 
-    def descendant_ids
-      descendant_links.collect(&:descendant_id)
+    def fast_ancestor_ids
+      connection.select_values(self.class.descendant_type.select(:ancestor_id).where(:descendant_id => self.id).to_sql)
     end
 
-    def ancestor_ids
-      ancestor_links.collect(&:ancestor_id)
+    def fast_descendant_ids
+      connection.select_values(self.class.descendant_type.select(:descendant_id).where(:ancestor_id => self.id).to_sql)
+    end
+    
+    def ancestor_values(column_name)
+      connection.select_values(self.class.joins(:ancestors).select("ancestors_#{self.class.table_name}.#{column_name}").where('descendant_id = ?', self.id).order('distance DESC').to_sql)
+    end
+
+    def descendant_values(column_name)
+      connection.select_values(self.class.joins(:descendants).select("descendants_#{self.class.table_name}.#{column_name}").where('ancestor_id = ?', self.id).order('distance ASC').to_sql)
     end
 
     # CALLBACKS
@@ -318,11 +326,11 @@ module ActsAsDAG
       #                 E
       #
       # Now destroy all affected descendant_links (ancestors of parent (C), descendants of child (D))
-      descendant_type.delete_all(:ancestor_id => parent.ancestor_ids, :descendant_id => child.descendant_ids)
+      descendant_type.delete_all(:ancestor_id => parent.fast_ancestor_ids, :descendant_id => child.fast_descendant_ids)
 
       # Now iterate through all ancestors of the descendant_links that were deleted and pick only those that have no parents, namely (A, D)
       # These will be the starting points for the recreation of descendant links
-      starting_points = self.class.find(parent.ancestor_ids + child.descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
+      starting_points = self.class.find(parent.fast_ancestor_ids + child.fast_descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
       logger.info {"starting points are #{starting_points.collect(&:name).to_sentence}" }
 
       # POSSIBLE OPTIMIZATION: The two starting points may share descendants. We only need to process each node once, so if we could skip dups, that would be good
@@ -350,7 +358,6 @@ module ActsAsDAG
       end
 
       # Now check each child to see if it is a descendant, or if we need to recurse
-      dids = descendant_ids
       for child in children
         logger.info {"#{indent}Recursing to #{child.name}"}
         child.send(:rebuild_descendant_links, ancestors.dup)
