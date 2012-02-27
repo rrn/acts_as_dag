@@ -228,30 +228,6 @@ module ActsAsDAG
       self.class.descendant_type
     end
 
-    def fast_child_ids
-      connection.select_values(self.class.link_type.select(:child_id).where(:parent_id => self.id).to_sql)
-    end
-
-    def fast_parent_ids
-      connection.select_values(self.class.link_type.select(:parent_id).where(:child_id => self.id).to_sql)
-    end
-
-    def fast_ancestor_ids
-      connection.select_values(self.class.descendant_type.select(:ancestor_id).where(:descendant_id => self.id).to_sql)
-    end
-
-    def fast_descendant_ids
-      connection.select_values(self.class.descendant_type.select(:descendant_id).where(:ancestor_id => self.id).to_sql)
-    end
-    
-    def ancestor_values(column_name)
-      connection.select_values(self.class.joins(:ancestors).select("ancestors_#{self.class.table_name}.#{column_name}").where('descendant_id = ?', self.id).order('distance DESC').to_sql)
-    end
-
-    def descendant_values(column_name)
-      connection.select_values(self.class.joins(:descendants).select("descendants_#{self.class.table_name}.#{column_name}").where('ancestor_id = ?', self.id).order('distance ASC').to_sql)
-    end
-
     # CALLBACKS
     def initialize_links
       link_type.new(:parent_id => nil, :child_id => id).save!
@@ -296,7 +272,7 @@ module ActsAsDAG
       child_descendant_links = descendant_type.where(:ancestor_id => child.id) # (totem pole model => totem pole model)
       for parent_ancestor_link in parent_ancestor_links
         for child_descendant_link in child_descendant_links
-          descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(:ancestor_id => parent_ancestor_link.ancestor_id, :descendant_id => child_descendant_link.descendant_id, :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1).save!
+          descendant_type.find_or_initialize_by_ancestor_id_and_descendant_id_and_distance(parent_ancestor_link.ancestor_id, child_descendant_link.descendant_id, parent_ancestor_link.distance + child_descendant_link.distance + 1).save!
         end
       end
     end
