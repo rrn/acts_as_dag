@@ -6,7 +6,6 @@ Gem::Specification.new do |s|
   s.homepage = 'http://github.com/rrn/acts_as_dag'
   s.summary = 'Adds directed acyclic graph functionality to ActiveRecord.'
   s.authors = ['Nicholas Jakobsen', 'Ryan Wallace']
-
-  s.files = `git ls-files`.split("\n")
+  
   s.require_paths = ["lib"]
 end
