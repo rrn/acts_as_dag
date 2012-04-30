@@ -8,4 +8,5 @@ Gem::Specification.new do |s|
   s.authors = ['Nicholas Jakobsen', 'Ryan Wallace']
   
   s.require_paths = ["lib"]
+  s.files = Dir.glob("{lib,spec}/**/*") + %w(LICENSE README.rdoc)
 end
