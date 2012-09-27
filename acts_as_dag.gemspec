@@ -1,7 +1,7 @@
 Gem::Specification.new do |s|
   s.name = 'acts_as_dag'
-  s.version = '1.0.3'
-  s.date = %q{2010-09-15}
+  s.version = '1.0.4'
+  s.date = %q{2012-09-27}
   s.email = 'technical@rrnpilot.org'
   s.homepage = 'http://github.com/rrn/acts_as_dag'
   s.summary = 'Adds directed acyclic graph functionality to ActiveRecord.'
