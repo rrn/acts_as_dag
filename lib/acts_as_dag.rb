@@ -114,6 +114,11 @@ module ActsAsDAG
   end
 
   module InstanceMethods
+    # Returns true if this record is a root node
+    def root?
+      self.class.roots.exists? self
+    end
+
     # Searches all descendants for the best parent for the other
     # i.e. it lets you drop the category in at the top and it drops down the list until it finds its final resting place
     def plinko(other)
@@ -302,11 +307,11 @@ module ActsAsDAG
       #                 E
       #
       # Now destroy all affected descendant_links (ancestors of parent (C), descendants of child (D))
-      descendant_type.delete_all(:ancestor_id => parent.fast_ancestor_ids, :descendant_id => child.fast_descendant_ids)
+      descendant_type.delete_all(:ancestor_id => parent.ancestor_ids, :descendant_id => child.descendant_ids)
 
       # Now iterate through all ancestors of the descendant_links that were deleted and pick only those that have no parents, namely (A, D)
       # These will be the starting points for the recreation of descendant links
-      starting_points = self.class.find(parent.fast_ancestor_ids + child.fast_descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
+      starting_points = self.class.find(parent.ancestor_ids + child.descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
       logger.info {"starting points are #{starting_points.collect(&:name).to_sentence}" }
 
       # POSSIBLE OPTIMIZATION: The two starting points may share descendants. We only need to process each node once, so if we could skip dups, that would be good
