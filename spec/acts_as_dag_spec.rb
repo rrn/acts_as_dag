@@ -15,6 +15,7 @@ describe 'acts_as_dag' do
 
     it "should be a root node immediately after saving" do
       @grandpa.parents.should be_empty
+      @grandpa.root?.should be_true
     end
 
     it "should be descendant of itself immediately after saving" do
@@ -91,9 +92,21 @@ describe 'acts_as_dag' do
       @big_red_model_totem_pole = MyModel.create(:name => "big red model totem pole")      
     end
 
+    it "should reinitialize links and descendants after resetting the hierarchy" do
+      MyModel.reset_hierarchy
+      @big_totem_pole.parents.should == []
+      @big_totem_pole.children.should == []
+      @big_totem_pole.ancestors.should == [@big_totem_pole]
+      @big_totem_pole.descendants.should == [@big_totem_pole]
+    end    
+
     it "should be able to determine whether one category is an ancestor of the other by inspecting the name" do 
-      @totem_pole.should_descend_from?(@big_totem_pole).should be_false
-      @big_totem_pole.should_descend_from?(@totem_pole).should be_true
+      ActsAsDAG::HelperMethods.should_descend_from?(@totem_pole, @big_totem_pole).should be_true
+      ActsAsDAG::HelperMethods.should_descend_from?(@big_totem_pole, @totem_pole).should be_false
+    end
+
+    it "should be able to determine the number of matching words in two categories names" do 
+      ActsAsDAG::HelperMethods.matching_word_count(@totem_pole, @big_totem_pole).should == 2
     end
 
     it "should arrange the categories correctly when not passed any arguments" do

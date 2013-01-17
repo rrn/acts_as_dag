@@ -25,5 +25,5 @@ ActiveRecord::Schema.define(:version => 0) do
 end
 
 class MyModel < ActiveRecord::Base
-  acts_as_dag
+  acts_as_dag :link_table => 'my_model_links', :descendant_table => 'my_model_descendants', :link_conditions => nil
 end
