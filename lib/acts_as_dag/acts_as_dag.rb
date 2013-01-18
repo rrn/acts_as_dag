@@ -1,15 +1,16 @@
-# options[:link_conditions] used to apply constraint on the links and descendants tables. Default assumes links are all in the same polymorphic table, same for descendants. Can be cleared to allow setup of individual tables for each acts_as_dag class's links and descendants
+# options[:link_conditions] used to apply constraint on the links and descendants tables. Default assumes links for all classes are in the same table, similarly for descendants. Can be cleared to allow setup of individual tables for each acts_as_dag class's links and descendants
 module ActsAsDAG
   module ActMethod
     def acts_as_dag(options = {})
+      class_attribute :acts_as_dag_options
       options.assert_valid_keys :link_class, :descendant_class, :link_table, :descendant_table, :link_conditions
       options.reverse_merge!(
         :link_class => "#{self.name}Link",
         :link_table => "acts_as_dag_links",
         :descendant_class => "#{self.name}Descendant",
-        :link_descendants => "acts_as_dag_desendants",
-        :link_conditions => {:category_type => self.name
-      })
+        :descendant_table => "acts_as_dag_descendants",
+        :link_conditions => {:category_type => self.name})
+      self.acts_as_dag_options = options
 
       # Create Link and Descendant Classes
       class_eval <<-EOV
@@ -33,6 +34,17 @@ module ActsAsDAG
           ::#{options[:descendant_class]}
         end
       EOV
+
+      # Returns a relation scoping to only link table entries that match the link conditions
+      def self.link_table_entries
+        link_class.where(acts_as_dag_options[:link_conditions])
+      end
+
+      # Returns a relation scoping to only descendant table entries table entries that match the link conditions
+      def self.descendant_table_entries
+        descendant_class.where(acts_as_dag_options[:link_conditions])
+      end
+
 
       # Ancestors and descendants returned *include* self, e.g. A's descendants are [A,B,C,D]
       # Ancestors must always be returned in order of most distant to least
@@ -108,10 +120,10 @@ module ActsAsDAG
       ids = categories_to_reset.collect(&:id)
 
       logger.info "Clearing #{self.name} hierarchy links"
-      link_class.where("parent_id IN (?) OR child_id IN (?)", ids, ids).delete_all
+      link_table_entries.where("parent_id IN (?) OR child_id IN (?)", ids, ids).delete_all
 
       logger.info "Clearing #{self.name} hierarchy descendants"
-      descendant_class.where("descendant_id IN (?) OR ancestor_id IN (?)", ids, ids).delete_all
+      descendant_table_entries.where("descendant_id IN (?) OR ancestor_id IN (?)", ids, ids).delete_all
 
       categories_to_reset.each do |category|
         category.send :initialize_links
@@ -174,11 +186,11 @@ module ActsAsDAG
 
     # CALLBACKS
     def initialize_links
-      link_class.create!(:parent_id => nil, :child_id => self.id) # Root link
+      self.class.link_table_entries.create!(:parent_id => nil, :child_id => self.id) # Root link
     end
 
     def initialize_descendants
-      descendant_class.create!(:ancestor_id => self.id, :descendant_id => self.id, :distance => 0) # Self Descendant
+      self.class.descendant_table_entries.create!(:ancestor_id => self.id, :descendant_id => self.id, :distance => 0) # Self Descendant
     end
   end
 
@@ -263,13 +275,15 @@ module ActsAsDAG
       raise "Child has no ID" if child.id.nil?
       raise "Parent and child must be the same class" if parent.class != child.class
 
+      klass = child.class
+
       # Create a new parent-child link
       # Return if the link already exists because we can assume that the proper descendants already exist too
-      if child.link_class.where(:parent_id => parent.id, :child_id => child.id).exists?
+      if klass.link_table_entries.where(:parent_id => parent.id, :child_id => child.id).exists?
         logger.info "Skipping #{child.descendant_class} update because the link already exists"
         return
       else
-        child.link_class.create!(:parent_id => parent.id, :child_id => child.id)
+        klass.link_table_entries.create!(:parent_id => parent.id, :child_id => child.id)
       end
 
       # If we have been passed a parent, find and destroy any existing links from nil (root) to the child as it can no longer be a top-level node
@@ -279,12 +293,12 @@ module ActsAsDAG
       # The child and all its descendants need to be added as descendants of the parent
 
       # get parent ancestor id list
-      parent_ancestor_links = child.descendant_class.where(:descendant_id => parent.id) # (totem => totem pole), (totem_pole => totem_pole)
+      parent_ancestor_links = klass.descendant_table_entries.where(:descendant_id => parent.id) # (totem => totem pole), (totem_pole => totem_pole)
       # get child descendant id list
-      child_descendant_links = child.descendant_class.where(:ancestor_id => child.id) # (totem pole model => totem pole model)
+      child_descendant_links = klass.descendant_table_entries.where(:ancestor_id => child.id) # (totem pole model => totem pole model)
       for parent_ancestor_link in parent_ancestor_links
         for child_descendant_link in child_descendant_links
-          child.descendant_class.where(:ancestor_id => parent_ancestor_link.ancestor_id, :descendant_id => child_descendant_link.descendant_id, :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1).first_or_create!
+          klass.descendant_table_entries.where(:ancestor_id => parent_ancestor_link.ancestor_id, :descendant_id => child_descendant_link.descendant_id, :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1).first_or_create!
         end
       end
     end
@@ -298,8 +312,10 @@ module ActsAsDAG
       # Raise an exception if there is no child
       raise "Child cannot be nil when deleting a category_link" unless child
 
+      klass = child.class
+
       # delete the links
-      child.link_class.delete_all(:parent_id => (parent ? parent.id : nil), :child_id => child.id)
+      klass.link_table_entries.where(:parent_id => (parent ? parent.id : nil), :child_id => child.id).delete_all
 
       # If the parent was nil, we don't need to update descendants because there are no descendants of nil
       return unless parent
@@ -314,11 +330,11 @@ module ActsAsDAG
       #                 E
       #
       # Now destroy all affected descendant_links (ancestors of parent (C), descendants of child (D))
-      child.descendant_class.delete_all(:ancestor_id => parent.ancestor_ids, :descendant_id => child.descendant_ids)
+      klass.descendant_table_entries.where(:ancestor_id => parent.ancestor_ids, :descendant_id => child.descendant_ids).delete_all
 
       # Now iterate through all ancestors of the descendant_links that were deleted and pick only those that have no parents, namely (A, D)
       # These will be the starting points for the recreation of descendant links
-      starting_points = child.class.find(parent.ancestor_ids + child.descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
+      starting_points = klass.find(parent.ancestor_ids + child.descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
       parent.logger.info {"starting points are #{starting_points.collect(&:name).to_sentence}" }
 
       # POSSIBLE OPTIMIZATION: The two starting points may share descendants. We only need to process each node once, so if we could skip dups, that would be good
@@ -331,6 +347,7 @@ module ActsAsDAG
     # Then iterate to all children of the current node passing the ancestor array along
     def self.rebuild_descendant_links(current, ancestors = [])
       indent = Array.new(ancestors.size, "  ").join
+      klass = current.class
 
       current.logger.info {"#{indent}Rebuilding descendant links of #{current.name}"}
       # Add current to the list of traversed nodes that we will pass to the children we decide to recurse to
@@ -339,7 +356,7 @@ module ActsAsDAG
       # Create descendant links to each ancestor in the array (including itself)
       ancestors.reverse.each_with_index do |ancestor, index|
         current.logger.info {"#{indent}#{ancestor.name} is an ancestor of #{current.name} with distance #{index}"}
-        ancestor.descendant_class.where(:ancestor_id => ancestor.id, :descendant_id => current.id, :distance => index).first_or_create!
+        klass.descendant_table_entries.where(:ancestor_id => ancestor.id, :descendant_id => current.id, :distance => index).first_or_create!
       end
 
       # Now check each child to see if it is a descendant, or if we need to recurse
