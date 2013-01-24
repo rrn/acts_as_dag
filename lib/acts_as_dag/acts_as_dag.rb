@@ -101,14 +101,14 @@ module ActsAsDAG
             suitable_parent = true if ActsAsDAG::HelperMethods.plinko(root, category)
           end
           unless suitable_parent
-            logger.info "Plinko couldn't find a suitable parent for #{category.name} in #{categories.collect(&:name).join(', ')}"
+            ActiveRecord::Base.logger.info "Plinko couldn't find a suitable parent for #{category.name} in #{categories.collect(&:name).join(', ')}"
             categories_with_no_parents << category       
           end
         end
 
         # Add all categories from this group without suitable parents to the roots
         if categories_with_no_parents.present?
-          logger.info "Adding #{categories_with_no_parents.collect(&:name).join(', ')} to roots"
+          ActiveRecord::Base.logger.info "Adding #{categories_with_no_parents.collect(&:name).join(', ')} to roots"
           roots_categories.concat categories_with_no_parents
         end
       end
@@ -119,10 +119,10 @@ module ActsAsDAG
     def reset_hierarchy(categories_to_reset = self.all)
       ids = categories_to_reset.collect(&:id)
 
-      logger.info "Clearing #{self.name} hierarchy links"
+      ActiveRecord::Base.logger.info "Clearing #{self.name} hierarchy links"
       link_table_entries.where("parent_id IN (?) OR child_id IN (?)", ids, ids).delete_all
 
-      logger.info "Clearing #{self.name} hierarchy descendants"
+      ActiveRecord::Base.logger.info "Clearing #{self.name} hierarchy descendants"
       descendant_table_entries.where("descendant_id IN (?) OR ancestor_id IN (?)", ids, ids).delete_all
 
       categories_to_reset.each do |category|
@@ -198,7 +198,7 @@ module ActsAsDAG
     # Searches all descendants for the best parent for the other
     # i.e. it lets you drop the category in at the top and it drops down the list until it finds its final resting place
     def self.plinko(current, other)
-      current.logger.info "Plinkoing '#{other.name}' into '#{current.name}'..."
+      ActiveRecord::Base.logger.info "Plinkoing '#{other.name}' into '#{current.name}'..."
       if should_descend_from?(current, other)
         # Find the descendants of the current category that +other+ should descend from 
         descendants_other_should_descend_from = current.descendants.select{|descendant| should_descend_from?(descendant, other)}
@@ -208,7 +208,7 @@ module ActsAsDAG
         new_parents_group = descendants_other_should_descend_from.group_by{|category| matching_word_count(other, category)}.sort.reverse.first
         if new_parents_group.present?
           for new_parent in new_parents_group[1]
-            current.logger.info "  '#{other.name}' landed under '#{new_parent.name}'"
+            ActiveRecord::Base.logger.info "  '#{other.name}' landed under '#{new_parent.name}'"
             other.add_parent(new_parent)
 
             # We've just affected the associations in ways we can not possibly imagine, so let's clear the association cache
@@ -268,7 +268,7 @@ module ActsAsDAG
     # creates a single link in the given link_class's link table between parent and
     # child object ids and creates the appropriate entries in the descendant table
     def self.link(parent, child)
-      #      logger.info "link(hierarchy_link_table = #{child.link_class}, hierarchy_descendant_table = #{child.descendant_class}, parent = #{parent.name}, child = #{child.name})"
+      #      ActiveRecord::Base.logger.info "link(hierarchy_link_table = #{child.link_class}, hierarchy_descendant_table = #{child.descendant_class}, parent = #{parent.name}, child = #{child.name})"
 
       # Sanity check
       raise "Parent has no ID" if parent.id.nil?
@@ -280,7 +280,7 @@ module ActsAsDAG
       # Create a new parent-child link
       # Return if the link already exists because we can assume that the proper descendants already exist too
       if klass.link_table_entries.where(:parent_id => parent.id, :child_id => child.id).exists?
-        logger.info "Skipping #{child.descendant_class} update because the link already exists"
+        ActiveRecord::Base.logger.info "Skipping #{child.descendant_class} update because the link already exists"
         return
       else
         klass.link_table_entries.create!(:parent_id => parent.id, :child_id => child.id)
@@ -307,7 +307,7 @@ module ActsAsDAG
     # child object id. Updates the appropriate Descendants table entries
     def self.unlink(parent, child)
       descendant_table_string = child.descendant_class.to_s
-      #      parent.logger.info "unlink(hierarchy_link_table = #{child.link_class}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent ? parent.name : 'nil'}, child = #{child.name})"
+      #      ActiveRecord::Base.logger.info "unlink(hierarchy_link_table = #{child.link_class}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent ? parent.name : 'nil'}, child = #{child.name})"
 
       # Raise an exception if there is no child
       raise "Child cannot be nil when deleting a category_link" unless child
@@ -335,7 +335,7 @@ module ActsAsDAG
       # Now iterate through all ancestors of the descendant_links that were deleted and pick only those that have no parents, namely (A, D)
       # These will be the starting points for the recreation of descendant links
       starting_points = klass.find(parent.ancestor_ids + child.descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
-      parent.logger.info {"starting points are #{starting_points.collect(&:name).to_sentence}" }
+      ActiveRecord::Base.logger.info {"starting points are #{starting_points.collect(&:name).to_sentence}" }
 
       # POSSIBLE OPTIMIZATION: The two starting points may share descendants. We only need to process each node once, so if we could skip dups, that would be good
       starting_points.each{|node| rebuild_descendant_links(node)}
@@ -349,22 +349,22 @@ module ActsAsDAG
       indent = Array.new(ancestors.size, "  ").join
       klass = current.class
 
-      current.logger.info {"#{indent}Rebuilding descendant links of #{current.name}"}
+      ActiveRecord::Base.logger.info {"#{indent}Rebuilding descendant links of #{current.name}"}
       # Add current to the list of traversed nodes that we will pass to the children we decide to recurse to
       ancestors << current
 
       # Create descendant links to each ancestor in the array (including itself)
       ancestors.reverse.each_with_index do |ancestor, index|
-        current.logger.info {"#{indent}#{ancestor.name} is an ancestor of #{current.name} with distance #{index}"}
+        ActiveRecord::Base.logger.info {"#{indent}#{ancestor.name} is an ancestor of #{current.name} with distance #{index}"}
         klass.descendant_table_entries.where(:ancestor_id => ancestor.id, :descendant_id => current.id, :distance => index).first_or_create!
       end
 
       # Now check each child to see if it is a descendant, or if we need to recurse
       for child in current.children
-        current.logger.info {"#{indent}Recursing to #{child.name}"}
+        ActiveRecord::Base.logger.info {"#{indent}Recursing to #{child.name}"}
         rebuild_descendant_links(child, ancestors.dup)
       end
-      current.logger.info {"#{indent}Done recursing"}
+      ActiveRecord::Base.logger.info {"#{indent}Done recursing"}
     end
   end
 
