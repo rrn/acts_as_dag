@@ -84,6 +84,8 @@ module ActsAsDAG
     # Reorganizes the entire class of records based on their name, first resetting the hierarchy, then reoganizing
     # Can pass a list of categories and only those will be reorganized
     def reorganize(categories_to_reorganize = self.all)
+      return if categories_to_reorganize.empty?
+      
       reset_hierarchy(categories_to_reorganize)
 
       word_count_groups = categories_to_reorganize.group_by{|category| ActsAsDAG::HelperMethods.word_count(category)}.sort
