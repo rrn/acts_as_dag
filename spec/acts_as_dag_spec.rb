@@ -14,11 +14,6 @@ describe 'acts_as_dag' do
         @child = @klass.create(:name => 'child')
       end
 
-      it "should be a root node immediately after saving" do
-        @grandpa.parents.should be_empty
-        @grandpa.root?.should be_true
-      end
-
       it "should be descendant of itself immediately after saving" do
         @grandpa.descendants.should == [@grandpa]
       end
@@ -81,7 +76,18 @@ describe 'acts_as_dag' do
         @child.descendant_of?(@grandpa).should be_true
         @child.ancestor_of?(@grandpa).should be_false
         @grandpa.descendant_of?(@child).should be_false
-      end    
+      end
+
+      it "should be a root node immediately after saving" do
+        @grandpa.parents.should be_empty
+        @grandpa.root?.should be_true
+      end      
+
+      it "should be a child if it has a parent" do
+        @grandpa.add_child(@dad)
+        @grandpa.add_child(@mom)
+        @klass.children.order(:id).should == [@dad, @mom]
+      end      
     end
 
     describe "reorganization" do

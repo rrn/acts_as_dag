@@ -69,7 +69,9 @@ module ActsAsDAG
       after_create :initialize_links
       after_create :initialize_descendants
 
-      scope :roots, joins(:parent_links).where(link_class.table_name => {:parent_id => nil})
+      # NOTE: Use select to prevent ActiveRecord::ReadOnlyRecord if the returned records are modified
+      scope :roots, lambda { select("#{table_name}.*").joins(:parent_links).where("#{link_class.table_name}.parent_id IS NULL") }
+      scope :children, lambda { select("#{table_name}.*").joins(:parent_links).where("#{link_class.table_name}.parent_id IS NOT NULL").uniq }
 
       extend ActsAsDAG::ClassMethods
       include ActsAsDAG::InstanceMethods      
@@ -98,19 +100,21 @@ module ActsAsDAG
 
         # Try drop each category into each root
         categories.sort_by(&:name).each do |category|
+          start = Time.now
           suitable_parent = false
           roots_categories.each do |root|
             suitable_parent = true if ActsAsDAG::HelperMethods.plinko(root, category)
           end
           unless suitable_parent
-            ActiveRecord::Base.logger.info "Plinko couldn't find a suitable parent for #{category.name} in #{categories.collect(&:name).join(', ')}"
+            ActiveRecord::Base.logger.info { "Plinko couldn't find a suitable parent for #{category.name}" }
             categories_with_no_parents << category       
           end
+          puts "took #{Time.now - start} to analyze #{category.name}"
         end
 
         # Add all categories from this group without suitable parents to the roots
         if categories_with_no_parents.present?
-          ActiveRecord::Base.logger.info "Adding #{categories_with_no_parents.collect(&:name).join(', ')} to roots"
+          ActiveRecord::Base.logger.info { "Adding #{categories_with_no_parents.collect(&:name).join(', ')} to roots" }
           roots_categories.concat categories_with_no_parents
         end
       end
@@ -121,10 +125,10 @@ module ActsAsDAG
     def reset_hierarchy(categories_to_reset = self.all)
       ids = categories_to_reset.collect(&:id)
 
-      ActiveRecord::Base.logger.info "Clearing #{self.name} hierarchy links"
+      ActiveRecord::Base.logger.info { "Clearing #{self.name} hierarchy links" }
       link_table_entries.where("parent_id IN (?) OR child_id IN (?)", ids, ids).delete_all
 
-      ActiveRecord::Base.logger.info "Clearing #{self.name} hierarchy descendants"
+      ActiveRecord::Base.logger.info { "Clearing #{self.name} hierarchy descendants" }
       descendant_table_entries.where("descendant_id IN (?) OR ancestor_id IN (?)", ids, ids).delete_all
 
       categories_to_reset.each do |category|
@@ -200,17 +204,17 @@ module ActsAsDAG
     # Searches all descendants for the best parent for the other
     # i.e. it lets you drop the category in at the top and it drops down the list until it finds its final resting place
     def self.plinko(current, other)
-      ActiveRecord::Base.logger.info "Plinkoing '#{other.name}' into '#{current.name}'..."
+      # ActiveRecord::Base.logger.info { "Plinkoing '#{other.name}' into '#{current.name}'..." }
       if should_descend_from?(current, other)
         # Find the descendants of the current category that +other+ should descend from 
-        descendants_other_should_descend_from = current.descendants.select{|descendant| should_descend_from?(descendant, other)}
+        descendants_other_should_descend_from = current.descendants.select{|descendant| should_descend_from?(descendant, other) }
         # Of those, find the categories with the most number of matching words and make +other+ their child
         # We find all suitable candidates to provide support for categories whose names are permutations of each other
         # e.g. 'goat wool fibre' should be a child of 'goat wool' and 'wool goat' if both are present under 'goat'
         new_parents_group = descendants_other_should_descend_from.group_by{|category| matching_word_count(other, category)}.sort.reverse.first
         if new_parents_group.present?
           for new_parent in new_parents_group[1]
-            ActiveRecord::Base.logger.info "  '#{other.name}' landed under '#{new_parent.name}'"
+            ActiveRecord::Base.logger.info { "  '#{other.name}' landed under '#{new_parent.name}'" }
             other.add_parent(new_parent)
 
             # We've just affected the associations in ways we can not possibly imagine, so let's clear the association cache
@@ -270,7 +274,7 @@ module ActsAsDAG
     # creates a single link in the given link_class's link table between parent and
     # child object ids and creates the appropriate entries in the descendant table
     def self.link(parent, child)
-      #      ActiveRecord::Base.logger.info "link(hierarchy_link_table = #{child.link_class}, hierarchy_descendant_table = #{child.descendant_class}, parent = #{parent.name}, child = #{child.name})"
+      #      ActiveRecord::Base.logger.info { "link(hierarchy_link_table = #{child.link_class}, hierarchy_descendant_table = #{child.descendant_class}, parent = #{parent.name}, child = #{child.name})" }
 
       # Sanity check
       raise "Parent has no ID" if parent.id.nil?
@@ -282,7 +286,7 @@ module ActsAsDAG
       # Create a new parent-child link
       # Return if the link already exists because we can assume that the proper descendants already exist too
       if klass.link_table_entries.where(:parent_id => parent.id, :child_id => child.id).exists?
-        ActiveRecord::Base.logger.info "Skipping #{child.descendant_class} update because the link already exists"
+        ActiveRecord::Base.logger.info { "Skipping #{child.descendant_class} update because the link already exists" }
         return
       else
         klass.link_table_entries.create!(:parent_id => parent.id, :child_id => child.id)
@@ -309,7 +313,7 @@ module ActsAsDAG
     # child object id. Updates the appropriate Descendants table entries
     def self.unlink(parent, child)
       descendant_table_string = child.descendant_class.to_s
-      #      ActiveRecord::Base.logger.info "unlink(hierarchy_link_table = #{child.link_class}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent ? parent.name : 'nil'}, child = #{child.name})"
+      #      ActiveRecord::Base.logger.info { "unlink(hierarchy_link_table = #{child.link_class}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent ? parent.name : 'nil'}, child = #{child.name})" }
 
       # Raise an exception if there is no child
       raise "Child cannot be nil when deleting a category_link" unless child
