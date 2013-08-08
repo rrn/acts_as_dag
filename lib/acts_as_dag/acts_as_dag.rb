@@ -16,14 +16,14 @@ module ActsAsDAG
       class_eval <<-EOV
         class ::#{options[:link_class]} < ActsAsDAG::AbstractLink
           self.table_name = '#{options[:link_table]}'
-          belongs_to :parent, :class_name => '#{self.name}', :foreign_key => 'parent_id'
-          belongs_to :child, :class_name => '#{self.name}', :foreign_key => 'child_id'
+          belongs_to :parent,     :class_name => '#{self.name}', :foreign_key => :parent_id
+          belongs_to :child,      :class_name => '#{self.name}', :foreign_key => :child_id
         end
 
         class ::#{options[:descendant_class]} < ActsAsDAG::AbstractDescendant
           self.table_name = '#{options[:descendant_table]}'
-          belongs_to :ancestor, :class_name => '#{self.name}', :foreign_key => "ancestor_id"
-          belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => "descendant_id"
+          belongs_to :ancestor,   :class_name => '#{self.name}', :foreign_key => :ancestor_id
+          belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => :descendant_id
         end
 
         def self.link_class
@@ -45,33 +45,34 @@ module ActsAsDAG
         descendant_class.where(acts_as_dag_options[:link_conditions])
       end
 
-
       # Ancestors and descendants returned *include* self, e.g. A's descendants are [A,B,C,D]
       # Ancestors must always be returned in order of most distant to least
       # Descendants must always be returned in order of least distant to most
-      # NOTE: multiple instances of the same descendant/ancestor may be returned if there are multiple paths from ancestor to descendant
+      # NOTE: Uniq in order to prevent multiple instance being returned if there are multiple paths between ancestor and descendant
       #   A
       #  / \
       # B   C
       #  \ /
       #   D
       #
-      has_many :ancestor_links, :class_name => descendant_class, :foreign_key => 'descendant_id', :conditions => options[:link_conditions], :dependent => :delete_all
-      has_many :descendant_links, :class_name => descendant_class, :foreign_key => 'ancestor_id', :conditions => options[:link_conditions], :dependent => :delete_all
-      has_many :ancestors, :through => :ancestor_links, :source => :ancestor, :order => "distance DESC"
-      has_many :descendants, :through => :descendant_links, :source => :descendant, :order => "distance ASC"
+      has_many :ancestors,        lambda { select("#{table_name}.*, #{descendant_class.table_name}.distance").order('distance DESC').uniq }, :through => :ancestor_links, :source => :ancestor
+      has_many :descendants,      lambda { select("#{table_name}.*, #{descendant_class.table_name}.distance").order('distance ASC').uniq }, :through => :descendant_links, :source => :descendant
 
-      has_many :parent_links, :class_name => link_class, :foreign_key => 'child_id', :conditions => options[:link_conditions], :dependent => :delete_all
-      has_many :child_links, :class_name => link_class, :foreign_key => 'parent_id', :conditions => options[:link_conditions], :dependent => :delete_all
-      has_many :parents, :through => :parent_links, :source => :parent
-      has_many :children, :through => :child_links, :source => :child
+      has_many :ancestor_links,   lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
+      has_many :descendant_links, lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
+
+      has_many :parent_links,     lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'child_id', :dependent => :delete_all
+      has_many :child_links,      lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :delete_all
+
+      has_many :parents,          :through => :parent_links, :source => :parent
+      has_many :children,         :through => :child_links, :source => :child
+
+      # NOTE: Use select to prevent ActiveRecord::ReadOnlyRecord if the returned records are modified
+      scope :roots,               lambda { select("#{table_name}.*").joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
+      scope :children,            lambda { select("#{table_name}.*").joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).uniq }
 
       after_create :initialize_links
       after_create :initialize_descendants
-
-      # NOTE: Use select to prevent ActiveRecord::ReadOnlyRecord if the returned records are modified
-      scope :roots, lambda { select("#{table_name}.*").joins(:parent_links).where("#{link_class.table_name}.parent_id IS NULL") }
-      scope :children, lambda { select("#{table_name}.*").joins(:parent_links).where("#{link_class.table_name}.parent_id IS NOT NULL").uniq }
 
       extend ActsAsDAG::ClassMethods
       include ActsAsDAG::InstanceMethods      
@@ -304,7 +305,7 @@ module ActsAsDAG
       child_descendant_links = klass.descendant_table_entries.where(:ancestor_id => child.id) # (totem pole model => totem pole model)
       for parent_ancestor_link in parent_ancestor_links
         for child_descendant_link in child_descendant_links
-          klass.descendant_table_entries.where(:ancestor_id => parent_ancestor_link.ancestor_id, :descendant_id => child_descendant_link.descendant_id, :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1).first_or_create!
+          klass.descendant_table_entries.find_or_create_by!(:ancestor_id => parent_ancestor_link.ancestor_id, :descendant_id => child_descendant_link.descendant_id, :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1)
         end
       end
     end
@@ -321,7 +322,7 @@ module ActsAsDAG
       klass = child.class
 
       # delete the links
-      klass.link_table_entries.where(:parent_id => (parent ? parent.id : nil), :child_id => child.id).delete_all
+      klass.link_table_entries.where(:parent_id => parent.try(:id), :child_id => child.id).delete_all
 
       # If the parent was nil, we don't need to update descendants because there are no descendants of nil
       return unless parent
@@ -362,7 +363,7 @@ module ActsAsDAG
       # Create descendant links to each ancestor in the array (including itself)
       ancestors.reverse.each_with_index do |ancestor, index|
         ActiveRecord::Base.logger.info {"#{indent}#{ancestor.name} is an ancestor of #{current.name} with distance #{index}"}
-        klass.descendant_table_entries.where(:ancestor_id => ancestor.id, :descendant_id => current.id, :distance => index).first_or_create!
+        klass.descendant_table_entries.find_or_create_by!(:ancestor_id => ancestor.id, :descendant_id => current.id, :distance => index)
       end
 
       # Now check each child to see if it is a descendant, or if we need to recurse

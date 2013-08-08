@@ -67,6 +67,20 @@ describe 'acts_as_dag' do
         @dad.descendants.should == [@dad,@child]
         @dad.children.should == [@child]
       end
+
+      it "should return ancestors in order of greatest distance to least" do
+        @dad.add_child(@child)
+        @grandpa.add_child(@dad)
+
+        @child.ancestors.should == [@grandpa, @dad, @child]
+      end
+
+      it "should return descendants in order of of least distance to greatest" do
+        @dad.add_child(@child)
+        @grandpa.add_child(@dad)
+
+        @grandpa.descendants.should == [@grandpa, @dad, @child]
+      end
       
       it "should be able to test descent" do
         @dad.add_child(@child)
@@ -157,12 +171,20 @@ describe 'acts_as_dag' do
         @big_totem_pole_model.reload.children.should == [@big_red_model_totem_pole]
       end  
 
-      describe "when there is a single long inheritance chain" do
+      describe "when there is a single long inheritance chain with multiple paths between an ancestor and descendant" do
         before(:each) do
           @totem.add_child(@totem_pole)
           @totem_pole.add_child(@big_totem_pole)
           @big_totem_pole.add_child(@big_model_totem_pole)
           @big_model_totem_pole.add_child(@big_red_model_totem_pole)
+        end
+
+        it "should not return multiple instances of any descendants" do
+          @totem.descendants.should == [@totem, @totem_pole, @big_totem_pole, @big_model_totem_pole, @big_red_model_totem_pole]
+        end
+
+        it "should not return multiple instances of any ancestors" do
+          @big_red_model_totem_pole.ancestors.should == [@totem, @totem_pole, @big_totem_pole, @big_model_totem_pole, @big_red_model_totem_pole]
         end
 
         describe "and we are reorganizing the middle of the chain" do
