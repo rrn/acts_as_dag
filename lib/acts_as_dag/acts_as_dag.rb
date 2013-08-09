@@ -48,24 +48,24 @@ module ActsAsDAG
       # Ancestors and descendants returned *include* self, e.g. A's descendants are [A,B,C,D]
       # Ancestors must always be returned in order of most distant to least
       # Descendants must always be returned in order of least distant to most
-      # NOTE: Uniq in order to prevent multiple instance being returned if there are multiple paths between ancestor and descendant
+      # NOTE: Rails 4.0.0 currently ignores the order clause when eager loading, so results may not be returned in the correct order
+      # NOTE: multiple instances of the same descendant/ancestor may be returned if there are multiple paths from ancestor to descendant
       #   A
       #  / \
       # B   C
       #  \ /
       #   D
       #
-      has_many :ancestors,        lambda { select("#{table_name}.*, #{descendant_class.table_name}.distance").order('distance DESC').uniq }, :through => :ancestor_links, :source => :ancestor
-      has_many :descendants,      lambda { select("#{table_name}.*, #{descendant_class.table_name}.distance").order('distance ASC').uniq }, :through => :descendant_links, :source => :descendant
+      has_many :ancestors,        lambda { order("#{descendant_class.table_name}.distance DESC") }, :through => :ancestor_links, :source => :ancestor
+      has_many :descendants,      lambda { order("#{descendant_class.table_name}.distance ASC") }, :through => :descendant_links, :source => :descendant
 
       has_many :ancestor_links,   lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
       has_many :descendant_links, lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
 
-      has_many :parent_links,     lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'child_id', :dependent => :delete_all
-      has_many :child_links,      lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :delete_all
-
       has_many :parents,          :through => :parent_links, :source => :parent
       has_many :children,         :through => :child_links, :source => :child
+      has_many :parent_links,     lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'child_id', :dependent => :delete_all
+      has_many :child_links,      lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :delete_all
 
       # NOTE: Use select to prevent ActiveRecord::ReadOnlyRecord if the returned records are modified
       scope :roots,               lambda { select("#{table_name}.*").joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
