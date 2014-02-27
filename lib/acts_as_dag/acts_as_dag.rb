@@ -56,20 +56,20 @@ module ActsAsDAG
       #  \ /
       #   D
       #
-      has_many :ancestors,        lambda { order("#{descendant_class.table_name}.distance DESC") }, :through => :ancestor_links, :source => :ancestor
-      has_many :descendants,      lambda { order("#{descendant_class.table_name}.distance ASC") }, :through => :descendant_links, :source => :descendant
+      has_many :ancestors,        -> { order("#{descendant_class.table_name}.distance DESC") }, :through => :ancestor_links, :source => :ancestor
+      has_many :descendants,      -> { order("#{descendant_class.table_name}.distance ASC") }, :through => :descendant_links, :source => :descendant
 
-      has_many :ancestor_links,   lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
-      has_many :descendant_links, lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
+      has_many :ancestor_links,   -> { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
+      has_many :descendant_links, -> { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
 
       has_many :parents,          :through => :parent_links, :source => :parent
       has_many :children,         :through => :child_links, :source => :child
-      has_many :parent_links,     lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'child_id', :dependent => :delete_all
-      has_many :child_links,      lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :delete_all
+      has_many :parent_links,     -> { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'child_id', :dependent => :delete_all
+      has_many :child_links,      -> { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :delete_all
 
       # NOTE: Use select to prevent ActiveRecord::ReadOnlyRecord if the returned records are modified
-      scope :roots,               lambda { select("#{table_name}.*").joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
-      scope :children,            lambda { select("#{table_name}.*").joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).uniq }
+      scope :roots,               -> { select("#{table_name}.*").joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
+      scope :children,            -> { select("#{table_name}.*").joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).uniq }
 
       after_create :initialize_links
       after_create :initialize_descendants
