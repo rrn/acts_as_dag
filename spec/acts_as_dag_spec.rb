@@ -129,6 +129,10 @@ describe 'acts_as_dag' do
         @mom.parents.should be_empty
         @mom.children.should be_present
       end
+
+      it "should return a list of ancestors and descendants" do
+        @mom.relatives.should == (@mom.ancestors + @mom.descendants).uniq
+      end
     end
 
     describe "reorganization" do

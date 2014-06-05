@@ -196,6 +196,11 @@ module ActsAsDAG
       self.class.descendant_class
     end
 
+    # Returns an array of ancestors and descendants
+    def relatives
+      (ancestors + descendants).uniq
+    end
+
     private
 
     # CALLBACKS
