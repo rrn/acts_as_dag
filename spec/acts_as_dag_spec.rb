@@ -5,7 +5,7 @@ describe 'acts_as_dag' do
     before(:each) do
       @klass.destroy_all # Because we're using sqlite3 and it doesn't support transactional specs (afaik)
     end
-    
+
     describe "and" do
       before(:each) do
         @grandpa = @klass.create(:name => 'grandpa')
@@ -81,7 +81,7 @@ describe 'acts_as_dag' do
 
         @grandpa.descendants.should == [@grandpa, @dad, @child]
       end
-      
+
       it "should be able to test descent" do
         @dad.add_child(@child)
         @grandpa.add_child(@dad)
@@ -95,13 +95,32 @@ describe 'acts_as_dag' do
       it "should be a root node immediately after saving" do
         @grandpa.parents.should be_empty
         @grandpa.root?.should be_true
-      end      
+      end
 
       it "should be a child if it has a parent" do
         @grandpa.add_child(@dad)
         @grandpa.add_child(@mom)
         @klass.children.order(:id).should == [@dad, @mom]
-      end      
+      end
+    end
+
+    context "when a dag model is deleted from a hierarchy" do
+      before(:each) do
+        @grandma = @klass.create(:name => 'grandma')
+        @mom = @klass.create(:name => 'mom')
+        @brother = @klass.create(:name => 'brother')
+
+        @grandma.add_child(@mom)
+        @mom.add_child(@sister)
+      end
+
+      it "should delete the associated hierarchy-tracking records " do
+        @mom.destroy
+        @mom.descendant_links.should be_empty
+        @mom.ancestor_links.should be_empty
+        @mom.parent_links.should be_empty
+        @mom.child_links.should be_empty
+      end
     end
 
     describe "reorganization" do
@@ -110,7 +129,7 @@ describe 'acts_as_dag' do
         @totem_pole = @klass.create(:name => "totem pole")
         @big_totem_pole = @klass.create(:name => "big totem pole")
         @big_model_totem_pole = @klass.create(:name => "big model totem pole")
-        @big_red_model_totem_pole = @klass.create(:name => "big red model totem pole")      
+        @big_red_model_totem_pole = @klass.create(:name => "big red model totem pole")
       end
 
       it "should reinitialize links and descendants after resetting the hierarchy" do
@@ -121,18 +140,18 @@ describe 'acts_as_dag' do
         @big_totem_pole.descendants.should == [@big_totem_pole]
       end
 
-      it "should be able to determine whether one category is an ancestor of the other by inspecting the name" do 
+      it "should be able to determine whether one category is an ancestor of the other by inspecting the name" do
         ActsAsDAG::HelperMethods.should_descend_from?(@totem_pole, @big_totem_pole).should be_true
         ActsAsDAG::HelperMethods.should_descend_from?(@big_totem_pole, @totem_pole).should be_false
       end
 
-      it "should be able to determine the number of matching words in two categories names" do 
+      it "should be able to determine the number of matching words in two categories names" do
         ActsAsDAG::HelperMethods.matching_word_count(@totem_pole, @big_totem_pole).should == 2
       end
 
       it "should arrange the categories correctly when not passed any arguments" do
         @klass.reorganize
-        
+
         @totem.children.should == [@totem_pole]
         @totem_pole.children.should == [@big_totem_pole]
         @big_totem_pole.children.should == [@big_model_totem_pole]
@@ -141,7 +160,7 @@ describe 'acts_as_dag' do
 
       it "should arrange the categories correctly when passed a set of nodes to reorganize" do
         @klass.reorganize [@totem, @totem_pole, @big_totem_pole, @big_model_totem_pole, @big_red_model_totem_pole]
-        
+
         @totem.reload.children.should == [@totem_pole]
         @totem_pole.reload.children.should == [@big_totem_pole]
         @big_totem_pole.reload.children.should == [@big_model_totem_pole]
@@ -158,7 +177,7 @@ describe 'acts_as_dag' do
         @big_totem_pole.children.should == [@big_model_totem_pole]
         @big_model_totem_pole.reload.children.should == [@big_red_model_totem_pole]
       end
-    
+
       it "should still work when there are categories that are permutations of each other" do
         @big_totem_pole_model = @klass.create(:name => "big totem pole model")
 
@@ -169,7 +188,7 @@ describe 'acts_as_dag' do
         (@big_totem_pole.children - [@big_model_totem_pole, @big_totem_pole_model]).should == []
         @big_model_totem_pole.reload.children.should == [@big_red_model_totem_pole]
         @big_totem_pole_model.reload.children.should == [@big_red_model_totem_pole]
-      end  
+      end
 
       describe "when there is a single long inheritance chain" do
         before(:each) do
@@ -195,14 +214,14 @@ describe 'acts_as_dag' do
           end
 
           it "should return multiple instances of descendants before breaking the old link" do
-            @totem.descendants.sort_by(&:id).should == [@totem, @totem_pole, @big_totem_pole, @big_model_totem_pole, @big_model_totem_pole, @big_red_model_totem_pole, @big_red_model_totem_pole].sort_by(&:id)        
+            @totem.descendants.sort_by(&:id).should == [@totem, @totem_pole, @big_totem_pole, @big_model_totem_pole, @big_model_totem_pole, @big_red_model_totem_pole, @big_red_model_totem_pole].sort_by(&:id)
           end
 
           it "should return the correct inheritance chain after breaking the old link" do
             @totem_pole.remove_child(@big_model_totem_pole)
 
-            @totem_pole.children.sort_by(&:id).should == [@big_totem_pole].sort_by(&:id)        
-            @totem.descendants.sort_by(&:id).should == [@totem, @totem_pole, @big_totem_pole, @big_model_totem_pole, @big_red_model_totem_pole].sort_by(&:id)        
+            @totem_pole.children.sort_by(&:id).should == [@big_totem_pole].sort_by(&:id)
+            @totem.descendants.sort_by(&:id).should == [@totem, @totem_pole, @big_totem_pole, @big_model_totem_pole, @big_red_model_totem_pole].sort_by(&:id)
           end
 
           it "should return the correct inheritance chain after breaking the old link when there is are two ancestor root nodes" do
@@ -215,7 +234,7 @@ describe 'acts_as_dag' do
             @totem.descendants.sort_by(&:id).should == [@totem, @totem_pole, @big_totem_pole, @big_model_totem_pole, @big_red_model_totem_pole].sort_by(&:id)
           end
         end
-      end    
+      end
     end
 
     describe "and two paths of the same length exist to the same node" do
@@ -229,14 +248,14 @@ describe 'acts_as_dag' do
         @grandpa.add_child(@dad)
         @dad.add_child(@child)
         @child.add_parent(@mom)
-        @mom.add_parent(@grandpa)      
+        @mom.add_parent(@grandpa)
       end
 
       it "descendants should not return multiple instances of a child" do
         @grandpa.descendants.sort_by(&:id).should == [@grandpa, @dad, @mom, @child].sort_by(&:id)
-      end      
+      end
 
-      describe "and a link between parent and ancestor is removed" do 
+      describe "and a link between parent and ancestor is removed" do
         before(:each) do
           # the incest is undone!
           @dad.remove_parent(@grandpa)
@@ -253,7 +272,7 @@ describe 'acts_as_dag' do
           @mom.descendants.sort_by(&:id).should == [@mom, @child].sort_by(&:id)
           @dad.descendants.sort_by(&:id).should == [@dad, @child].sort_by(&:id)
           @grandpa.descendants.sort_by(&:id).should == [@grandpa, @mom, @child].sort_by(&:id)
-        end      
+        end
       end
     end
   end
@@ -280,5 +299,5 @@ describe 'acts_as_dag' do
       record.parent_links.first.category_type.should == @klass.name
       record.descendant_links.first.category_type.should == @klass.name
     end
-  end  
+  end
 end
