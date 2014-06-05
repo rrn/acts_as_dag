@@ -104,22 +104,30 @@ describe 'acts_as_dag' do
       end
     end
 
-    context "when a dag model is deleted from a hierarchy" do
+    context "when a record hierarchy exists" do
       before(:each) do
         @grandma = @klass.create(:name => 'grandma')
         @mom = @klass.create(:name => 'mom')
         @brother = @klass.create(:name => 'brother')
 
         @grandma.add_child(@mom)
-        @mom.add_child(@sister)
+        @mom.add_child(@brother)
       end
 
-      it "should delete the associated hierarchy-tracking records " do
+      it "destroying a record should delete the associated hierarchy-tracking records " do
         @mom.destroy
         @mom.descendant_links.should be_empty
         @mom.ancestor_links.should be_empty
         @mom.parent_links.should be_empty
         @mom.child_links.should be_empty
+      end
+
+      it "make_root should make the record a root, but maintain it's children" do
+        @mom.make_root
+
+        @mom.should be_root
+        @mom.parents.should be_empty
+        @mom.children.should be_present
       end
     end
 
@@ -288,7 +296,6 @@ describe 'acts_as_dag' do
   describe "models with unified link tables" do
     before(:each) do
       @klass = UnifiedLinkModel
-      @klass.logger = Logger.new(STDOUT)
     end
 
     it_should_behave_like "DAG Model"

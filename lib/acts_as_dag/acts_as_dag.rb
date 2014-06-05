@@ -75,7 +75,7 @@ module ActsAsDAG
       after_create :initialize_descendants
 
       extend ActsAsDAG::ClassMethods
-      include ActsAsDAG::InstanceMethods      
+      include ActsAsDAG::InstanceMethods
     end
   end
 
@@ -88,7 +88,7 @@ module ActsAsDAG
     # Can pass a list of categories and only those will be reorganized
     def reorganize(categories_to_reorganize = self.all)
       return if categories_to_reorganize.empty?
-      
+
       reset_hierarchy(categories_to_reorganize)
 
       word_count_groups = categories_to_reorganize.group_by{|category| ActsAsDAG::HelperMethods.word_count(category)}.sort
@@ -101,16 +101,16 @@ module ActsAsDAG
 
         # Try drop each category into each root
         categories.sort_by(&:name).each do |category|
-          start = Time.now
-          suitable_parent = false
-          roots_categories.each do |root|
-            suitable_parent = true if ActsAsDAG::HelperMethods.plinko(root, category)
+          ActiveRecord::Base.benchmark "Analyze #{category.name}" do
+            suitable_parent = false
+            roots_categories.each do |root|
+              suitable_parent = true if ActsAsDAG::HelperMethods.plinko(root, category)
+            end
+            unless suitable_parent
+              ActiveRecord::Base.logger.info { "Plinko couldn't find a suitable parent for #{category.name}" }
+              categories_with_no_parents << category
+            end
           end
-          unless suitable_parent
-            ActiveRecord::Base.logger.info { "Plinko couldn't find a suitable parent for #{category.name}" }
-            categories_with_no_parents << category       
-          end
-          puts "took #{Time.now - start} to analyze #{category.name}"
         end
 
         # Add all categories from this group without suitable parents to the roots
@@ -136,13 +136,20 @@ module ActsAsDAG
         category.send :initialize_links
         category.send :initialize_descendants
       end
-    end    
+    end
   end
 
   module InstanceMethods
     # Returns true if this record is a root node
     def root?
       self.class.roots.exists? self
+    end
+
+    def make_root
+      ancestor_links.delete_all
+      parent_links.delete_all
+      send :initialize_links
+      send :initialize_descendants
     end
 
     # Adds a category as a parent of this category (self)
@@ -207,7 +214,7 @@ module ActsAsDAG
     def self.plinko(current, other)
       # ActiveRecord::Base.logger.info { "Plinkoing '#{other.name}' into '#{current.name}'..." }
       if should_descend_from?(current, other)
-        # Find the descendants of the current category that +other+ should descend from 
+        # Find the descendants of the current category that +other+ should descend from
         descendants_other_should_descend_from = current.descendants.select{|descendant| should_descend_from?(descendant, other) }
         # Of those, find the categories with the most number of matching words and make +other+ their child
         # We find all suitable candidates to provide support for categories whose names are permutations of each other
@@ -219,7 +226,7 @@ module ActsAsDAG
             other.add_parent(new_parent)
 
             # We've just affected the associations in ways we can not possibly imagine, so let's clear the association cache
-            current.clear_association_cache 
+            current.clear_association_cache
           end
           return true
         end
@@ -235,8 +242,8 @@ module ActsAsDAG
           unless plinko(current, category)
           end
         end
-      end    
-    end    
+      end
+    end
 
     # Returns the portion of this category's name that is not present in any of it's parents
     def self.unique_name_portion(current)
@@ -331,7 +338,7 @@ module ActsAsDAG
       #                 A   F
       #                / \ /
       #               B   C
-      #               |   
+      #               |
       #               |   D
       #                \ /
       #                 E
@@ -350,7 +357,7 @@ module ActsAsDAG
 
     # Create a descendant link to iteself, then iterate through all children
     # We add this node to the ancestor array we received
-    # Then we create a descendant link between it and all nodes in the array we were passed (nodes traversed between it and all its ancestors affected by the unlinking).          
+    # Then we create a descendant link between it and all nodes in the array we were passed (nodes traversed between it and all its ancestors affected by the unlinking).
     # Then iterate to all children of the current node passing the ancestor array along
     def self.rebuild_descendant_links(current, ancestors = [])
       indent = Array.new(ancestors.size, "  ").join

@@ -10,7 +10,7 @@ ActiveRecord::Base.establish_connection(:adapter => "sqlite3", :database => ":me
 ActiveRecord::Schema.define(:version => 0) do
 
   # MODEL TABLES
-  
+
   create_table :separate_link_models, :force => true do |t|
     t.string :name
   end
