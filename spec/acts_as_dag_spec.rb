@@ -86,15 +86,15 @@ describe 'acts_as_dag' do
         @dad.add_child(@child)
         @grandpa.add_child(@dad)
 
-        @grandpa.ancestor_of?(@child).should be_true
-        @child.descendant_of?(@grandpa).should be_true
-        @child.ancestor_of?(@grandpa).should be_false
-        @grandpa.descendant_of?(@child).should be_false
+        @grandpa.ancestor_of?(@child).should be_truthy
+        @child.descendant_of?(@grandpa).should be_truthy
+        @child.ancestor_of?(@grandpa).should be_falsy
+        @grandpa.descendant_of?(@child).should be_falsy
       end
 
       it "should be a root node immediately after saving" do
         @grandpa.parents.should be_empty
-        @grandpa.root?.should be_true
+        @grandpa.root?.should be_truthy
       end
 
       it "should be a child if it has a parent" do
@@ -153,8 +153,8 @@ describe 'acts_as_dag' do
       end
 
       it "should be able to determine whether one category is an ancestor of the other by inspecting the name" do
-        ActsAsDAG::HelperMethods.should_descend_from?(@totem_pole, @big_totem_pole).should be_true
-        ActsAsDAG::HelperMethods.should_descend_from?(@big_totem_pole, @totem_pole).should be_false
+        ActsAsDAG::HelperMethods.should_descend_from?(@totem_pole, @big_totem_pole).should be_truthy
+        ActsAsDAG::HelperMethods.should_descend_from?(@big_totem_pole, @totem_pole).should be_falsy
       end
 
       it "should be able to determine the number of matching words in two categories names" do
