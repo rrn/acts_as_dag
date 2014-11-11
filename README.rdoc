@@ -3,3 +3,26 @@
 Adds Directed Acyclic Graph functionality to ActiveRecord
 
 Used by RRN data mapper to setup link and descendant database tables
+
+## Installation
+
+### Migration
+
+```ruby
+class CreateActsAsDagTables < ActiveRecord::Migration
+  def change
+    create_table "acts_as_dag_descendants", :force => true do |t|
+      t.string :category_type
+      t.references :ancestor
+      t.references :descendant
+      t.integer :distance
+    end
+
+    create_table "acts_as_dag_links", :force => true do |t|
+      t.string :category_type
+      t.references :parent
+      t.references :child
+    end
+  end
+end
+```
