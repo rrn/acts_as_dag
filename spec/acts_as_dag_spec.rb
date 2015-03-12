@@ -287,6 +287,46 @@ describe 'acts_as_dag' do
         end
       end
     end
+
+    describe "Includes, Eager-Loads, and Preloads" do
+      before(:each) do
+        @grandpa = @klass.create(:name => 'grandpa')
+        @dad = @klass.create(:name => 'dad')
+        @mom = @klass.create(:name => 'mom')
+        @child = @klass.create(:name => 'child')
+
+        @dad.add_parent(@grandpa)
+        @child.add_parent(@dad)
+        @child.add_parent(@mom)
+      end
+
+      it "should preload ancestors in the correct order" do
+        records = @klass.order("#{@klass.table_name}.id asc").preload(:ancestors)
+
+        records[0].ancestors.should == [@grandpa]                      # @grandpa
+        records[1].ancestors.should == [@grandpa, @dad]                # @dad
+        records[2].ancestors.should == [@mom]                          # @mom
+        records[3].ancestors.should == [@grandpa, @dad, @mom, @child]  # @child
+      end
+
+      it "should eager_load ancestors in the correct order" do
+        records = @klass.order("#{@klass.table_name}.id asc").eager_load(:ancestors)
+
+        records[0].ancestors.should == [@grandpa]                      # @grandpa
+        records[1].ancestors.should == [@grandpa, @dad]                # @dad
+        records[2].ancestors.should == [@mom]                          # @mom
+        records[3].ancestors.should == [@grandpa, @dad, @mom, @child]  # @child
+      end
+
+      it "should include ancestors in the correct order" do
+        records = @klass.order("#{@klass.table_name}.id asc").includes(:ancestors)
+
+        records[0].ancestors.should == [@grandpa]                      # @grandpa
+        records[1].ancestors.should == [@grandpa, @dad]                # @dad
+        records[2].ancestors.should == [@mom]                          # @mom
+        records[3].ancestors.should == [@grandpa, @dad, @mom, @child]  # @child
+      end
+    end
   end
 
   describe "models with separate link tables" do

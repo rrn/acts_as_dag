@@ -3,8 +3,10 @@ require 'active_record'
 require 'logger'
 require 'acts_as_dag'
 
+puts ActiveRecord.version
+
 ActiveRecord::Base.logger = Logger.new(STDOUT)
-ActiveRecord::Base.logger.level = Logger::INFO
+ActiveRecord::Base.logger.level = Logger::WARN
 ActiveRecord::Base.establish_connection(:adapter => "sqlite3", :database => ":memory:")
 
 ActiveRecord::Schema.define(:version => 0) do
