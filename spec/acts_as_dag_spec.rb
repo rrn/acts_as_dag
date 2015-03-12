@@ -153,12 +153,12 @@ describe 'acts_as_dag' do
       end
 
       it "should be able to determine whether one category is an ancestor of the other by inspecting the name" do
-        ActsAsDAG::HelperMethods.should_descend_from?(@totem_pole, @big_totem_pole).should be_truthy
-        ActsAsDAG::HelperMethods.should_descend_from?(@big_totem_pole, @totem_pole).should be_falsy
+        ActsAsDAG::Deprecated::HelperMethods.should_descend_from?(@totem_pole, @big_totem_pole).should be_truthy
+        ActsAsDAG::Deprecated::HelperMethods.should_descend_from?(@big_totem_pole, @totem_pole).should be_falsy
       end
 
       it "should be able to determine the number of matching words in two categories names" do
-        ActsAsDAG::HelperMethods.matching_word_count(@totem_pole, @big_totem_pole).should == 2
+        ActsAsDAG::Deprecated::HelperMethods.matching_word_count(@totem_pole, @big_totem_pole).should == 2
       end
 
       it "should arrange the categories correctly when not passed any arguments" do

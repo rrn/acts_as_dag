@@ -76,49 +76,14 @@ module ActsAsDAG
 
       extend ActsAsDAG::ClassMethods
       include ActsAsDAG::InstanceMethods
+      extend ActsAsDAG::Deprecated::ClassMethods
+      include ActsAsDAG::Deprecated::InstanceMethods
     end
   end
 
   module ClassMethods
     def acts_like_dag?
       true
-    end
-
-    # Reorganizes the entire class of records based on their name, first resetting the hierarchy, then reoganizing
-    # Can pass a list of categories and only those will be reorganized
-    def reorganize(categories_to_reorganize = self.all)
-      return if categories_to_reorganize.empty?
-
-      reset_hierarchy(categories_to_reorganize)
-
-      word_count_groups = categories_to_reorganize.group_by{|category| ActsAsDAG::HelperMethods.word_count(category)}.sort
-      roots_categories = word_count_groups.first[1].dup.sort_by(&:name)  # We will build up a list of plinko targets, we start with the group of categories with the shortest word count
-
-      # Now plinko the next shortest word group into those targets
-      # If we can't plinko one, then it gets added as a root
-      word_count_groups[1..-1].each do |word_count, categories|
-        categories_with_no_parents = []
-
-        # Try drop each category into each root
-        categories.sort_by(&:name).each do |category|
-          ActiveRecord::Base.benchmark "Analyze #{category.name}" do
-            suitable_parent = false
-            roots_categories.each do |root|
-              suitable_parent = true if ActsAsDAG::HelperMethods.plinko(root, category)
-            end
-            unless suitable_parent
-              ActiveRecord::Base.logger.info { "Plinko couldn't find a suitable parent for #{category.name}" }
-              categories_with_no_parents << category
-            end
-          end
-        end
-
-        # Add all categories from this group without suitable parents to the roots
-        if categories_with_no_parents.present?
-          ActiveRecord::Base.logger.info { "Adding #{categories_with_no_parents.collect(&:name).join(', ')} to roots" }
-          roots_categories.concat categories_with_no_parents
-        end
-      end
     end
 
     # Remove all hierarchy information for this category
@@ -214,76 +179,6 @@ module ActsAsDAG
   end
 
   module HelperMethods
-    # Searches all descendants for the best parent for the other
-    # i.e. it lets you drop the category in at the top and it drops down the list until it finds its final resting place
-    def self.plinko(current, other)
-      # ActiveRecord::Base.logger.info { "Plinkoing '#{other.name}' into '#{current.name}'..." }
-      if should_descend_from?(current, other)
-        # Find the descendants of the current category that +other+ should descend from
-        descendants_other_should_descend_from = current.descendants.select{|descendant| should_descend_from?(descendant, other) }
-        # Of those, find the categories with the most number of matching words and make +other+ their child
-        # We find all suitable candidates to provide support for categories whose names are permutations of each other
-        # e.g. 'goat wool fibre' should be a child of 'goat wool' and 'wool goat' if both are present under 'goat'
-        new_parents_group = descendants_other_should_descend_from.group_by{|category| matching_word_count(other, category)}.sort.reverse.first
-        if new_parents_group.present?
-          for new_parent in new_parents_group[1]
-            ActiveRecord::Base.logger.info { "  '#{other.name}' landed under '#{new_parent.name}'" }
-            other.add_parent(new_parent)
-
-            # We've just affected the associations in ways we can not possibly imagine, so let's clear the association cache
-            current.clear_association_cache
-          end
-          return true
-        end
-      end
-    end
-
-    # Convenience method for plinkoing multiple categories
-    # Plinko's multiple categories from shortest to longest in order to prevent the need for reorganization
-    def self.plinko_multiple(current, others)
-      groups = others.group_by{|category| word_count(category)}.sort
-      groups.each do |word_count, categories|
-        categories.each do |category|
-          unless plinko(current, category)
-          end
-        end
-      end
-    end
-
-    # Returns the portion of this category's name that is not present in any of it's parents
-    def self.unique_name_portion(current)
-      unique_portion = current.name.split
-      for parent in current.parents
-        for word in parent.name.split
-          unique_portion.delete(word)
-        end
-      end
-
-      return unique_portion.empty? ? nil : unique_portion.join(' ')
-    end
-
-    # Checks if other should descend from +current+ based on name matching
-    # Returns true if other contains all the words from +current+, but has words that are not contained in +current+
-    def self.should_descend_from?(current, other)
-      return false if current == other
-
-      other_words = other.name.split
-      current_words = current.name.split
-
-      # (other contains all the words from current and more) && (current contains no words that are not also in other)
-      return (other_words - (current_words & other_words)).count > 0 && (current_words - other_words).count == 0
-    end
-
-    def self.word_count(current)
-      current.name.split.count
-    end
-
-    def self.matching_word_count(current, other)
-      other_words = other.name.split
-      self_words = current.name.split
-      return (other_words & self_words).count
-    end
-
     # creates a single link in the given link_class's link table between parent and
     # child object ids and creates the appropriate entries in the descendant table
     def self.link(parent, child)
