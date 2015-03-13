@@ -46,17 +46,17 @@ module ActsAsDAG
     end
 
     module HelperMethods
-      # Searches all descendants for the best parent for the other
+      # Searches the subtree for the best parent for the other
       # i.e. it lets you drop the category in at the top and it drops down the list until it finds its final resting place
       def self.plinko(current, other)
         # ActiveRecord::Base.logger.info { "Plinkoing '#{other.name}' into '#{current.name}'..." }
         if should_descend_from?(current, other)
-          # Find the descendants of the current category that +other+ should descend from
-          descendants_other_should_descend_from = current.descendants.select{|descendant| should_descend_from?(descendant, other) }
+          # Find the subtree of the current category that +other+ should descend from
+          subtree_other_should_descend_from = current.subtree.select{|record| should_descend_from?(record, other) }
           # Of those, find the categories with the most number of matching words and make +other+ their child
           # We find all suitable candidates to provide support for categories whose names are permutations of each other
           # e.g. 'goat wool fibre' should be a child of 'goat wool' and 'wool goat' if both are present under 'goat'
-          new_parents_group = descendants_other_should_descend_from.group_by{|category| matching_word_count(other, category)}.sort.reverse.first
+          new_parents_group = subtree_other_should_descend_from.group_by{|category| matching_word_count(other, category)}.sort.reverse.first
           if new_parents_group.present?
             for new_parent in new_parents_group[1]
               ActiveRecord::Base.logger.info { "  '#{other.name}' landed under '#{new_parent.name}'" }

@@ -8,7 +8,7 @@ Gem::Specification.new do |s|
   s.authors = ['Nicholas Jakobsen', 'Ryan Wallace']
 
   s.add_dependency('activerecord', '~> 4.0')
-  s.add_development_dependency('rspec-rails', '~> 3.0')
+  s.add_development_dependency('rspec', '~> 3.2')
 
   s.require_paths = ["lib"]
   s.files = Dir.glob("{lib,spec}/**/*") + %w(LICENSE README.rdoc)

@@ -271,11 +271,11 @@ module ActsAsDAG
       #                 E
       #
       # Now destroy all affected descendant_links (ancestors of parent (C), descendants of child (D))
-      klass.descendant_table_entries.where(:ancestor_id => parent.ancestor_ids, :descendant_id => child.descendant_ids).delete_all
+      klass.descendant_table_entries.where(:ancestor_id => parent.path_ids, :descendant_id => child.subtree_ids).delete_all
 
       # Now iterate through all ancestors of the descendant_links that were deleted and pick only those that have no parents, namely (A, D)
       # These will be the starting points for the recreation of descendant links
-      starting_points = klass.find(parent.ancestor_ids + child.descendant_ids).select{|node| node.parents.empty? || node.parents == [nil] }
+      starting_points = klass.find(parent.path_ids + child.subtree_ids).select{|node| node.parents.empty? || node.parents == [nil] }
       ActiveRecord::Base.logger.info {"starting points are #{starting_points.collect(&:name).to_sentence}" }
 
       # POSSIBLE OPTIMIZATION: The two starting points may share descendants. We only need to process each node once, so if we could skip dups, that would be good
@@ -286,24 +286,24 @@ module ActsAsDAG
     # We add this node to the ancestor array we received
     # Then we create a descendant link between it and all nodes in the array we were passed (nodes traversed between it and all its ancestors affected by the unlinking).
     # Then iterate to all children of the current node passing the ancestor array along
-    def self.rebuild_descendant_links(current, ancestors = [])
-      indent = Array.new(ancestors.size, "  ").join
+    def self.rebuild_descendant_links(current, path = [])
+      indent = Array.new(path.size, "  ").join
       klass = current.class
 
       ActiveRecord::Base.logger.info {"#{indent}Rebuilding descendant links of #{current.name}"}
       # Add current to the list of traversed nodes that we will pass to the children we decide to recurse to
-      ancestors << current
+      path << current
 
       # Create descendant links to each ancestor in the array (including itself)
-      ancestors.reverse.each_with_index do |ancestor, index|
-        ActiveRecord::Base.logger.info {"#{indent}#{ancestor.name} is an ancestor of #{current.name} with distance #{index}"}
-        klass.descendant_table_entries.find_or_create_by!(:ancestor_id => ancestor.id, :descendant_id => current.id, :distance => index)
+      path.reverse.each_with_index do |record, index|
+        ActiveRecord::Base.logger.info {"#{indent}#{record.name} is a member of the path of #{current.name} with distance #{index}"}
+        klass.descendant_table_entries.find_or_create_by!(:ancestor_id => record.id, :descendant_id => current.id, :distance => index)
       end
 
       # Now check each child to see if it is a descendant, or if we need to recurse
       for child in current.children
         ActiveRecord::Base.logger.info {"#{indent}Recursing to #{child.name}"}
-        rebuild_descendant_links(child, ancestors.dup)
+        rebuild_descendant_links(child, path.dup)
       end
       ActiveRecord::Base.logger.info {"#{indent}Done recursing"}
     end
