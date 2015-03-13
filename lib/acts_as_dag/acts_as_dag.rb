@@ -18,12 +18,19 @@ module ActsAsDAG
           self.table_name = '#{options[:link_table]}'
           belongs_to :parent,     :class_name => '#{self.name}', :foreign_key => :parent_id
           belongs_to :child,      :class_name => '#{self.name}', :foreign_key => :child_id
+
+          after_create Proc.new {|link| HelperMethods.update_transitive_closure_for_new_link(link) }
+          after_destroy Proc.new {|link| HelperMethods.update_transitive_closure_for_destroyed_link(link) }
+
+          def node_class; #{self.name} end
         end
 
         class ::#{options[:descendant_class]} < ActsAsDAG::AbstractDescendant
           self.table_name = '#{options[:descendant_table]}'
           belongs_to :ancestor,   :class_name => '#{self.name}', :foreign_key => :ancestor_id
           belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => :descendant_id
+
+          def node_class; #{self.name} end
         end
 
         def self.link_class
@@ -95,10 +102,8 @@ module ActsAsDAG
     def reset_hierarchy(categories_to_reset = self.all)
       ids = categories_to_reset.collect(&:id)
 
-      ActiveRecord::Base.logger.info { "Clearing #{self.name} hierarchy links" }
       link_table_entries.where("parent_id IN (?) OR child_id IN (?)", ids, ids).delete_all
 
-      ActiveRecord::Base.logger.info { "Clearing #{self.name} hierarchy descendants" }
       descendant_table_entries.where("descendant_id IN (?) OR ancestor_id IN (?)", ids, ids).delete_all
 
       categories_to_reset.each do |category|
@@ -123,6 +128,22 @@ module ActsAsDAG
       parent_links.delete_all
       send :initialize_links
       send :initialize_descendants
+    end
+
+    # NOTE: Parents that are removed will not trigger the destroy callback on their link, so we need to remove them manually
+    def parents=(parents)
+      (self.parents - parents).each do |parent_to_remove|
+        remove_parent(parent_to_remove)
+      end
+      super
+    end
+
+    # NOTE: Children that are removed will not trigger the destroy callback on their link, so we need to remove them manually
+    def children=(children)
+      (self.children - children).each do |child_to_remove|
+        remove_child(child_to_remove)
+      end
+      super
     end
 
     # Adds a category as a parent of this category (self)
@@ -209,8 +230,6 @@ module ActsAsDAG
     # creates a single link in the given link_class's link table between parent and
     # child object ids and creates the appropriate entries in the descendant table
     def self.link(parent, child)
-      #      ActiveRecord::Base.logger.info { "link(hierarchy_link_table = #{child.link_class}, hierarchy_descendant_table = #{child.descendant_class}, parent = #{parent.name}, child = #{child.name})" }
-
       # Sanity check
       raise "Parent has no ID" if parent.id.nil?
       raise "Child has no ID" if child.id.nil?
@@ -218,28 +237,27 @@ module ActsAsDAG
 
       klass = child.class
 
-      # Create a new parent-child link
       # Return if the link already exists because we can assume that the proper descendants already exist too
-      if klass.link_table_entries.where(:parent_id => parent.id, :child_id => child.id).exists?
-        ActiveRecord::Base.logger.info { "Skipping #{child.descendant_class} update because the link already exists" }
-        return
-      else
-        klass.link_table_entries.create!(:parent_id => parent.id, :child_id => child.id)
-      end
+      return if klass.link_table_entries.where(:parent_id => parent.id, :child_id => child.id).exists?
+
+      # Create a new parent-child link
+      klass.link_table_entries.create!(:parent_id => parent.id, :child_id => child.id)
 
       # If we have been passed a parent, find and destroy any existing links from nil (root) to the child as it can no longer be a top-level node
       unlink(nil, child) if parent
+    end
+
+    def self.update_transitive_closure_for_new_link(new_link)
+      klass = new_link.node_class
+
+      ancestor_ids_and_distance = klass.descendant_table_entries.where(:descendant_id => new_link.parent_id).pluck(:ancestor_id, :distance) # (totem => totem pole), (totem_pole => totem_pole)
+      descendant_ids_and_distance = klass.descendant_table_entries.where(:ancestor_id => new_link.child_id).pluck(:descendant_id, :distance) # (totem pole model => totem pole model)
 
       # The parent and all its ancestors need to be added as ancestors of the child
       # The child and all its descendants need to be added as descendants of the parent
-
-      # get parent ancestor id list
-      parent_ancestor_links = klass.descendant_table_entries.where(:descendant_id => parent.id) # (totem => totem pole), (totem_pole => totem_pole)
-      # get child descendant id list
-      child_descendant_links = klass.descendant_table_entries.where(:ancestor_id => child.id) # (totem pole model => totem pole model)
-      for parent_ancestor_link in parent_ancestor_links
-        for child_descendant_link in child_descendant_links
-          klass.descendant_table_entries.find_or_create_by!(:ancestor_id => parent_ancestor_link.ancestor_id, :descendant_id => child_descendant_link.descendant_id, :distance => parent_ancestor_link.distance + child_descendant_link.distance + 1)
+      ancestor_ids_and_distance.each do |ancestor_id, ancestor_distance|
+        descendant_ids_and_distance.each do |descendant_id, descendant_distance|
+          klass.descendant_table_entries.find_or_create_by!(:ancestor_id => ancestor_id, :descendant_id => descendant_id, :distance => ancestor_distance + descendant_distance + 1)
         end
       end
     end
@@ -247,20 +265,16 @@ module ActsAsDAG
     # breaks a single link in the given hierarchy_link_table between parent and
     # child object id. Updates the appropriate Descendants table entries
     def self.unlink(parent, child)
-      descendant_table_string = child.descendant_class.to_s
-      #      ActiveRecord::Base.logger.info { "unlink(hierarchy_link_table = #{child.link_class}, hierarchy_descendant_table = #{descendant_table_string}, parent = #{parent ? parent.name : 'nil'}, child = #{child.name})" }
-
       # Raise an exception if there is no child
       raise "Child cannot be nil when deleting a category_link" unless child
 
       klass = child.class
 
-      # delete the links
-      klass.link_table_entries.where(:parent_id => parent.try(:id), :child_id => child.id).delete_all
+      # delete the link if it exists
+      klass.link_table_entries.where(:parent_id => parent.try(:id), :child_id => child.id).destroy_all
+    end
 
-      # If the parent was nil, we don't need to update descendants because there are no descendants of nil
-      return unless parent
-
+    def self.update_transitive_closure_for_destroyed_link(destroyed_link)
       # We have unlinked C and D
       #                 A   F
       #                / \ /
@@ -270,17 +284,24 @@ module ActsAsDAG
       #                \ /
       #                 E
       #
+      klass = destroyed_link.node_class
+      parent = destroyed_link.parent
+      child = destroyed_link.child
+
+      # If the parent was nil, we don't need to update descendants because there are no descendants of nil
+      return unless parent
+
       # Now destroy all affected descendant_links (ancestors of parent (C), descendants of child (D))
       klass.descendant_table_entries.where(:ancestor_id => parent.path_ids, :descendant_id => child.subtree_ids).delete_all
 
       # Now iterate through all ancestors of the descendant_links that were deleted and pick only those that have no parents, namely (A, D)
       # These will be the starting points for the recreation of descendant links
       starting_points = klass.find(parent.path_ids + child.subtree_ids).select{|node| node.parents.empty? || node.parents == [nil] }
-      ActiveRecord::Base.logger.info {"starting points are #{starting_points.collect(&:name).to_sentence}" }
 
       # POSSIBLE OPTIMIZATION: The two starting points may share descendants. We only need to process each node once, so if we could skip dups, that would be good
       starting_points.each{|node| rebuild_descendant_links(node)}
     end
+
 
     # Create a descendant link to iteself, then iterate through all children
     # We add this node to the ancestor array we received
@@ -290,22 +311,18 @@ module ActsAsDAG
       indent = Array.new(path.size, "  ").join
       klass = current.class
 
-      ActiveRecord::Base.logger.info {"#{indent}Rebuilding descendant links of #{current.name}"}
       # Add current to the list of traversed nodes that we will pass to the children we decide to recurse to
       path << current
 
       # Create descendant links to each ancestor in the array (including itself)
       path.reverse.each_with_index do |record, index|
-        ActiveRecord::Base.logger.info {"#{indent}#{record.name} is a member of the path of #{current.name} with distance #{index}"}
         klass.descendant_table_entries.find_or_create_by!(:ancestor_id => record.id, :descendant_id => current.id, :distance => index)
       end
 
       # Now check each child to see if it is a descendant, or if we need to recurse
       for child in current.children
-        ActiveRecord::Base.logger.info {"#{indent}Recursing to #{child.name}"}
         rebuild_descendant_links(child, path.dup)
       end
-      ActiveRecord::Base.logger.info {"#{indent}Done recursing"}
     end
   end
 
