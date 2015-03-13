@@ -56,8 +56,11 @@ module ActsAsDAG
       #  \ /
       #   D
       #
-      has_many :ancestors,        lambda { order("#{descendant_class.table_name}.distance DESC") }, :through => :ancestor_links, :source => :ancestor
-      has_many :descendants,      lambda { order("#{descendant_class.table_name}.distance ASC") }, :through => :descendant_links, :source => :descendant
+      has_many :ancestors,        lambda { where("#{descendant_class.table_name}.descendant_id != #{table_name}.id").order("#{descendant_class.table_name}.distance DESC") }, :through => :ancestor_links, :source => :ancestor
+      has_many :descendants,      lambda { where("#{descendant_class.table_name}.ancestor_id != #{table_name}.id").order("#{descendant_class.table_name}.distance ASC") }, :through => :descendant_links, :source => :descendant
+
+      has_many :path,             lambda { order("#{descendant_class.table_name}.distance DESC") }, :through => :ancestor_links, :source => :ancestor
+      has_many :subtree,          lambda { order("#{descendant_class.table_name}.distance ASC") }, :through => :descendant_links, :source => :descendant
 
       has_many :ancestor_links,   lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
       has_many :descendant_links, lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
@@ -70,6 +73,7 @@ module ActsAsDAG
       # NOTE: Use select to prevent ActiveRecord::ReadOnlyRecord if the returned records are modified
       scope :roots,               lambda { select("#{table_name}.*").joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
       scope :children,            lambda { select("#{table_name}.*").joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).uniq }
+      scope :parent_records,      lambda { select("#{table_name}.*").joins(:child_links).where.not(link_class.table_name => {:child_id => nil}).uniq }
 
       after_create :initialize_links
       after_create :initialize_descendants
@@ -107,7 +111,11 @@ module ActsAsDAG
   module InstanceMethods
     # Returns true if this record is a root node
     def root?
-      self.class.roots.exists? self
+      parents.empty?
+    end
+
+    def leaf?
+      children.empty?
     end
 
     def make_root
@@ -118,13 +126,17 @@ module ActsAsDAG
     end
 
     # Adds a category as a parent of this category (self)
-    def add_parent(parent)
-      ActsAsDAG::HelperMethods.link(parent, self)
+    def add_parent(*parents)
+      parents.flatten.each do |parent|
+        ActsAsDAG::HelperMethods.link(parent, self)
+      end
     end
 
     # Adds a category as a child of this category (self)
-    def add_child(child)
-      ActsAsDAG::HelperMethods.link(self, child)
+    def add_child(*children)
+      children.flatten.each do |child|
+        ActsAsDAG::HelperMethods.link(self, child)
+      end
     end
 
     # Removes a category as a child of this category (self)
@@ -141,14 +153,24 @@ module ActsAsDAG
       return parent
     end
 
+    # Returns true if the category's children include *self*
+    def child_of?(category, options = {})
+      category.children.exists?(id)
+    end
+
+    # Returns true if the category's parents include *self*
+    def parent_of?(category, options = {})
+      category.parents.exists?(id)
+    end
+
     # Returns true if the category's descendants include *self*
     def descendant_of?(category, options = {})
-      ancestors.exists?(category)
+      category.descendants.exists?(id)
     end
 
     # Returns true if the category's descendants include *self*
     def ancestor_of?(category, options = {})
-      descendants.exists?(category)
+      category.ancestors.exists?(id)
     end
 
     # Returns the class used for links
@@ -162,8 +184,13 @@ module ActsAsDAG
     end
 
     # Returns an array of ancestors and descendants
-    def relatives
-      (ancestors + descendants).uniq
+    def lineage
+      lineage_links = self.class.descendant_table_entries
+                                  .select("(CASE ancestor_id WHEN #{id} THEN descendant_id ELSE ancestor_id END) AS id, ancestor_id, descendant_id, distance")
+                                  .where('ancestor_id = :id OR descendant_id = :id', :id => id)
+                                  .where('ancestor_id != descendant_id')                        # Don't include self
+
+      self.class.joins("JOIN (#{lineage_links.to_sql}) lineage_links ON #{self.class.table_name}.id = lineage_links.id").order("CASE ancestor_id WHEN #{id} THEN distance ELSE -distance END") # Ensure the links are orders furthest ancestor to furthest descendant
     end
 
     private

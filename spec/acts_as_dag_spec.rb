@@ -137,9 +137,9 @@ describe 'acts_as_dag' do
 
       it "returns records in descending order of distance, and ascending order added to graph" do
         grandpa.add_child(mom)
-        grandpa.add_child(dad)
         mom.add_child(billy)
-        expect(billy.ancestors).to eq([grandpa, mom, dad, billy])
+        dad.add_child(billy)
+        expect(billy.ancestors).to eq([grandpa, mom, dad])
       end
     end
 
@@ -348,9 +348,15 @@ describe 'acts_as_dag' do
         expect(mom.lineage).not_to include(mom)
       end
 
-      it "return ancestors and descendants of the receiver in the order they would be if called separately" do
-        mom.add_parent(grandpa)
+      it "includes all ancestors and descendants of the receiver" do
         mom.add_child(suzy, billy)
+        mom.add_parent(grandpa)
+        expect(mom.lineage).to include(grandpa, suzy, billy)
+      end
+
+      it "return ancestors and descendants of the receiver in the order they would be if called separately" do
+        mom.add_child(suzy, billy)
+        mom.add_parent(grandpa)
         expect(mom.lineage).to eq([grandpa, suzy, billy])
       end
     end
@@ -378,26 +384,26 @@ describe 'acts_as_dag' do
       end
     end
 
-    describe '::parents' do
+    describe '::parent_records' do
       it "returns an ActiveRecord::Relation" do
-        expect(@klass.parents).to be_an(ActiveRecord::Relation)
+        expect(@klass.parent_records).to be_an(ActiveRecord::Relation)
       end
 
       it "returns records that have at least 1 child" do
         mom.add_parent(grandpa)
         mom.add_child(suzy)
-        expect(@klass.parents).to include(grandpa, mom)
+        expect(@klass.parent_records).to include(grandpa, mom)
       end
 
       it "doesn't returns records without children" do
         mom.add_parent(grandpa)
         mom.add_child(suzy)
-        expect(@klass.parents).not_to include(suzy)
+        expect(@klass.parent_records).not_to include(suzy)
       end
 
       it "does not return duplicate records, regardless of the number of children" do
         mom.add_child(suzy, billy)
-        expect(@klass.parents).to eq([mom])
+        expect(@klass.parent_records).to eq([mom])
       end
     end
 
@@ -631,8 +637,8 @@ describe 'acts_as_dag' do
     it "should create links that include the category type" do
       record = @klass.create!
 
-      record.parent_links.first.category_type.should == @klass.name
-      record.descendant_links.first.category_type.should == @klass.name
+      expect(record.parent_links.first.category_type).to eq(@klass.name)
+      expect(record.descendant_links.first.category_type).to eq(@klass.name)
     end
   end
 end
