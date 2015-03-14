@@ -1,11 +1,11 @@
 require 'spec_helper'
 
 describe 'acts_as_dag' do
-  shared_examples_for "DAG Model" do
-    before(:each) do
-      klass.destroy_all # Because we're using sqlite3 and it doesn't support transactional specs (afaik)
-    end
+  before do
+    klass.destroy_all # Because we're using sqlite3 and it doesn't support transactional specs (afaik)
+  end
 
+  shared_examples_for "DAG Model" do
     let (:grandpa) { klass.create(:name => 'grandpa') }
     let (:dad) { klass.create(:name => 'dad') }
     let (:mom) { klass.create(:name => 'mom') }
@@ -435,6 +435,98 @@ describe 'acts_as_dag' do
       end
     end
 
+    describe '#ancestors_of' do
+      it "returns an ActiveRecord::Relation" do
+        expect(klass.ancestors_of(suzy)).to be_an(ActiveRecord::Relation)
+      end
+
+      it "doesn't include the given record" do
+        expect(klass.ancestors_of(suzy)).not_to include(suzy)
+      end
+
+      it "returns records that are ancestors of the given record" do
+        suzy.add_parent(mom, dad)
+        expect(klass.ancestors_of(suzy)).to include(mom, dad)
+      end
+
+      it "doesn't return records that are not ancestors of the given record" do
+        suzy.add_parent(mom)
+        expect(klass.ancestors_of(suzy)).not_to include(dad)
+      end
+
+      it "returns records that are ancestors of the given record id" do
+        suzy.add_parent(mom, dad)
+        expect(klass.ancestors_of(suzy.id)).to include(mom, dad)
+      end
+    end
+
+    describe '#descendants_of' do
+      it "returns an ActiveRecord::Relation" do
+        expect(klass.descendants_of(grandpa)).to be_an(ActiveRecord::Relation)
+      end
+
+      it "doesn't include the given record" do
+        expect(klass.descendants_of(grandpa)).not_to include(grandpa)
+      end
+
+      it "returns records that are descendants of the given record" do
+        grandpa.add_child(mom, dad)
+        expect(klass.descendants_of(grandpa)).to include(mom, dad)
+      end
+
+      it "doesn't return records that are not descendants of the given record" do
+        grandpa.add_child(mom)
+        expect(klass.descendants_of(grandpa)).not_to include(dad)
+      end
+
+      it "returns records that are descendants of the given record id" do
+        grandpa.add_child(mom, dad)
+        expect(klass.descendants_of(grandpa.id)).to include(mom, dad)
+      end
+    end
+
+    describe '#path_of' do
+      it "returns an ActiveRecord::Relation" do
+        expect(klass.path_of(suzy)).to be_an(ActiveRecord::Relation)
+      end
+
+      it "returns records that are path-members of the given record" do
+        suzy.add_parent(mom, dad)
+        expect(klass.path_of(suzy)).to include(mom, dad, suzy)
+      end
+
+      it "doesn't return records that are not path-members of the given record" do
+        suzy.add_parent(mom)
+        expect(klass.path_of(suzy)).not_to include(dad)
+      end
+
+      it "returns records that are path-members of the given record id" do
+        suzy.add_parent(mom, dad)
+        expect(klass.path_of(suzy.id)).to include(mom, dad, suzy)
+      end
+    end
+
+    describe '#subtree_of' do
+      it "returns an ActiveRecord::Relation" do
+        expect(klass.subtree_of(grandpa)).to be_an(ActiveRecord::Relation)
+      end
+
+      it "returns records that are subtree-members of the given record" do
+        grandpa.add_child(mom, dad)
+        expect(klass.subtree_of(grandpa)).to include(grandpa, mom, dad)
+      end
+
+      it "doesn't return records that are not subtree-members of the given record" do
+        grandpa.add_child(mom)
+        expect(klass.subtree_of(grandpa)).not_to include(dad)
+      end
+
+      it "returns records that are subtree-members of the given record id" do
+        grandpa.add_child(mom, dad)
+        expect(klass.subtree_of(grandpa.id)).to include(grandpa, mom, dad)
+      end
+    end
+
     describe '#destroy' do
       it "destroys associated hierarchy-tracking records" do
         mom.add_parent(grandpa)
@@ -442,8 +534,8 @@ describe 'acts_as_dag' do
 
         mom.destroy
 
-        expect(mom.descendant_links).to contain_exactly
         expect(mom.ancestor_links).to contain_exactly
+        expect(mom.path_links).to contain_exactly
         expect(mom.parent_links).to contain_exactly
         expect(mom.child_links).to contain_exactly
       end
@@ -574,6 +666,32 @@ describe 'acts_as_dag' do
       end
     end
 
+    describe '#ancestor_links' do
+      it "doesn't include a link to the receiver" do
+        expect(mom.ancestor_links).to contain_exactly
+      end
+    end
+
+    describe '#path_links' do
+      it "includes a link to the receiver" do
+        expect(mom.path_links.first.descendant).to eq(mom)
+      end
+    end
+
+    describe '#descendant_links' do
+      it "doesn't include a link to the receiver" do
+        expect(mom.descendant_links).to contain_exactly
+      end
+    end
+
+    describe '#subtree_links' do
+      it "includes a link to the receiver" do
+        expect(mom.subtree_links.first.descendant).to eq(mom)
+      end
+    end
+
+
+
     context "When two paths of the same length exist to the same node and a link between parent and ancestor is removed" do
       before do
         grandpa.add_child(mom, dad)
@@ -648,7 +766,7 @@ describe 'acts_as_dag' do
       record = klass.create!
 
       expect(record.parent_links.first.category_type).to eq(klass.name)
-      expect(record.descendant_links.first.category_type).to eq(klass.name)
+      expect(record.subtree_links.first.category_type).to eq(klass.name)
     end
   end
 end
