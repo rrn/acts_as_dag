@@ -143,24 +143,6 @@ module ActsAsDAG
       super
     end
 
-    # # NOTE: Parents that are removed will not trigger the destroy callback on their link, so we need to remove them manually
-    # def parent_ids=(parent_ids)
-    #   parent_ids = parent_ids.collect(&:to_i)
-    #   self.parents.reject {|parent| parent_ids.include? parent.id }.each do |parent_to_remove|
-    #     remove_parent(parent_to_remove)
-    #   end
-    #   super
-    # end
-
-    # # NOTE: Children that are removed will not trigger the destroy callback on their link, so we need to remove them manually
-    # def child_ids=(child_ids)
-    #   child_ids = child_ids.collect(&:to_i)
-    #   self.children.reject {|child| child_ids.include? child.id }.each do |child_to_remove|
-    #     remove_child(child_to_remove)
-    #   end
-    #   super
-    # end
-
 
     # Adds a category as a parent of this category (self)
     def add_parent(*parents)

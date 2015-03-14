@@ -450,48 +450,88 @@ describe 'acts_as_dag' do
     end
 
     describe '#parents=' do
+      before { suzy.parents = [mom, dad] }
+
       it "sets the receiver's parents to the given array" do
-        suzy.parents = [mom, dad]
         expect(suzy.parents).to eq([mom, dad])
       end
 
       it "updates the ancestors of the receiver" do
-        suzy.parents = [mom, dad]
         expect(suzy.ancestors).to eq([mom, dad])
       end
 
       it "unsets the receiver's parents when given an empty array" do
-        suzy.parents = [mom, dad]
         suzy.parents = []
         expect(suzy.parents).to contain_exactly
       end
 
       it "updates the ancestors of the receivers when given an empty array" do
-        suzy.parents = [mom, dad]
         suzy.parents = []
         expect(suzy.ancestors).to contain_exactly
       end
     end
 
     describe '#children=' do
+      before { grandpa.children = [mom, dad] }
+
       it "sets the receiver's children to the given array" do
-        grandpa.children = [mom, dad]
         expect(grandpa.children).to eq([mom, dad])
       end
 
       it "updates the descendants of the receiver" do
-        grandpa.children = [mom, dad]
         expect(grandpa.descendants).to eq([mom, dad])
       end
 
       it "unsets the receiver's children when given an empty array" do
-        grandpa.children = [mom, dad]
         grandpa.children = []
         expect(grandpa.children).to contain_exactly
       end
 
       it "updates the descendants of the receivers when given an empty array" do
-        grandpa.children = [mom, dad]
+        grandpa.children = []
+        expect(grandpa.descendants).to contain_exactly
+      end
+    end
+
+    describe '#parent_ids=' do
+      before { suzy.parent_ids = [mom.id, dad.id] }
+
+      it "sets the receiver's parents to the given array" do
+        expect(suzy.parents).to eq([mom, dad])
+      end
+
+      it "updates the ancestors of the receiver" do
+        expect(suzy.ancestors).to eq([mom, dad])
+      end
+
+      it "unsets the receiver's parents when given an empty array" do
+        suzy.parents = []
+        expect(suzy.parents).to contain_exactly
+      end
+
+      it "updates the ancestors of the receivers when given an empty array" do
+        suzy.parents = []
+        expect(suzy.ancestors).to contain_exactly
+      end
+    end
+
+    describe '#child_ids=' do
+      before { grandpa.child_ids = [mom.id, dad.id] }
+
+      it "sets the receiver's children to the given array" do
+        expect(grandpa.children).to eq([mom, dad])
+      end
+
+      it "updates the descendants of the receiver" do
+        expect(grandpa.descendants).to eq([mom, dad])
+      end
+
+      it "unsets the receiver's children when given an empty array" do
+        grandpa.children = []
+        expect(grandpa.children).to contain_exactly
+      end
+
+      it "updates the descendants of the receivers when given an empty array" do
         grandpa.children = []
         expect(grandpa.descendants).to contain_exactly
       end
