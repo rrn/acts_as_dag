@@ -81,9 +81,10 @@ module ActsAsDAG
       has_many :child_links,      lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :delete_all, :inverse_of => :parent
 
       # NOTE: Use select to prevent ActiveRecord::ReadOnlyRecord if the returned records are modified
-      scope :roots,               lambda { select("#{table_name}.*").joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
-      scope :children,            lambda { select("#{table_name}.*").joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).uniq }
-      scope :parent_records,      lambda { select("#{table_name}.*").joins(:child_links).where.not(link_class.table_name => {:child_id => nil}).uniq }
+      scope :roots,               lambda { joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
+      scope :leafs,               lambda { joins("LEFT OUTER JOIN #{link_class.table_name} ON #{table_name}.id = parent_id").where(link_class.table_name => {:child_id => nil}).uniq }
+      scope :children,            lambda { joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).uniq }
+      scope :parent_records,      lambda { joins(:child_links).where.not(link_class.table_name => {:child_id => nil}).uniq }
 
       scope :ancestors_of,        lambda {|record| joins(:descendant_links).where("descendant_id = ?", record) }
       scope :descendants_of,      lambda {|record| joins(:ancestor_links).where("ancestor_id = ?", record) }

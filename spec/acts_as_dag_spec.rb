@@ -690,7 +690,73 @@ describe 'acts_as_dag' do
       end
     end
 
+    describe '::roots' do
+      it "returns all root nodes" do
+        mom; dad
+        expect(klass.roots).to include(mom, dad)
+      end
 
+      it "doesn't return non-root nodes" do
+        mom.add_child(suzy)
+        expect(klass.roots).not_to include(suzy)
+      end
+
+      it "doesn't mark returned records as readonly" do
+        mom; dad
+        expect(klass.roots.none?(&:readonly?)).to be_truthy
+      end
+    end
+
+    describe '::leafs' do
+      it "returns all leaf nodes" do
+        mom.add_child(suzy)
+        expect(klass.leafs).to include(suzy)
+      end
+
+      it "doesn't return non-leaf nodes" do
+        mom.add_child(suzy)
+        expect(klass.leafs).not_to include(mom)
+      end
+
+      it "doesn't mark returned records as readonly" do
+        mom.add_child(suzy)
+        expect(klass.leafs.none?(&:readonly?)).to be_truthy
+      end
+    end
+
+    describe '::children' do
+      it "returns all child nodes" do
+        mom.add_child(suzy)
+        expect(klass.children).to contain_exactly(suzy)
+      end
+
+      it "doesn't return non-child nodes" do
+        mom; dad
+        expect(klass.children).not_to include(mom, dad)
+      end
+
+      it "doesn't mark returned records as readonly" do
+        mom.add_child(suzy)
+        expect(klass.children.none?(&:readonly?)).to be_truthy
+      end
+    end
+
+    describe '::parent_records' do
+      it "returns all parent nodes" do
+        mom.add_child(suzy)
+        expect(klass.parent_records).to contain_exactly(mom)
+      end
+
+      it "doesn't return non-parent nodes" do
+        mom; dad
+        expect(klass.parent_records).not_to include(mom, dad)
+      end
+
+      it "doesn't mark returned records as readonly" do
+        mom.add_child(suzy)
+        expect(klass.parent_records.none?(&:readonly?)).to be_truthy
+      end
+    end
 
     context "When two paths of the same length exist to the same node and a link between parent and ancestor is removed" do
       before do
