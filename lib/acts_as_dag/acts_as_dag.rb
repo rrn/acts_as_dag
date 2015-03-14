@@ -19,7 +19,7 @@ module ActsAsDAG
           belongs_to :parent,     :class_name => '#{self.name}', :foreign_key => :parent_id
           belongs_to :child,      :class_name => '#{self.name}', :foreign_key => :child_id
 
-          after_create Proc.new {|link| HelperMethods.update_transitive_closure_for_new_link(link) }
+          after_save Proc.new {|link| HelperMethods.update_transitive_closure_for_new_link(link) }
           after_destroy Proc.new {|link| HelperMethods.update_transitive_closure_for_destroyed_link(link) }
 
           def node_class; #{self.name} end
@@ -82,8 +82,7 @@ module ActsAsDAG
       scope :children,            lambda { select("#{table_name}.*").joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).uniq }
       scope :parent_records,      lambda { select("#{table_name}.*").joins(:child_links).where.not(link_class.table_name => {:child_id => nil}).uniq }
 
-      after_create :initialize_links
-      after_create :initialize_descendants
+      after_create :initialize_dag
 
       extend ActsAsDAG::ClassMethods
       include ActsAsDAG::InstanceMethods
@@ -107,8 +106,7 @@ module ActsAsDAG
       descendant_table_entries.where("descendant_id IN (?) OR ancestor_id IN (?)", ids, ids).delete_all
 
       categories_to_reset.each do |category|
-        category.send :initialize_links
-        category.send :initialize_descendants
+        category.send :initialize_dag
       end
     end
   end
@@ -126,8 +124,7 @@ module ActsAsDAG
     def make_root
       ancestor_links.delete_all
       parent_links.delete_all
-      send :initialize_links
-      send :initialize_descendants
+      initialize_dag
     end
 
     # NOTE: Parents that are removed will not trigger the destroy callback on their link, so we need to remove them manually
@@ -145,6 +142,25 @@ module ActsAsDAG
       end
       super
     end
+
+    # # NOTE: Parents that are removed will not trigger the destroy callback on their link, so we need to remove them manually
+    # def parent_ids=(parent_ids)
+    #   parent_ids = parent_ids.collect(&:to_i)
+    #   self.parents.reject {|parent| parent_ids.include? parent.id }.each do |parent_to_remove|
+    #     remove_parent(parent_to_remove)
+    #   end
+    #   super
+    # end
+
+    # # NOTE: Children that are removed will not trigger the destroy callback on their link, so we need to remove them manually
+    # def child_ids=(child_ids)
+    #   child_ids = child_ids.collect(&:to_i)
+    #   self.children.reject {|child| child_ids.include? child.id }.each do |child_to_remove|
+    #     remove_child(child_to_remove)
+    #   end
+    #   super
+    # end
+
 
     # Adds a category as a parent of this category (self)
     def add_parent(*parents)
@@ -217,12 +233,10 @@ module ActsAsDAG
     private
 
     # CALLBACKS
-    def initialize_links
-      self.class.link_table_entries.create!(:parent_id => nil, :child_id => self.id) # Root link
-    end
 
-    def initialize_descendants
-      self.class.descendant_table_entries.create!(:ancestor_id => self.id, :descendant_id => self.id, :distance => 0) # Self Descendant
+    def initialize_dag
+      self.class.descendant_table_entries.where(:ancestor_id => self.id, :descendant_id => self.id, :distance => 0).first_or_create! # Self Descendant
+      self.class.link_table_entries.create!(:parent_id => nil, :child_id => self.id) unless self.class.link_table_entries.exists?(:child_id => self.id)
     end
   end
 
@@ -249,6 +263,9 @@ module ActsAsDAG
 
     def self.update_transitive_closure_for_new_link(new_link)
       klass = new_link.node_class
+
+      new_link.parent.send(:initialize_dag) if new_link.parent
+      new_link.child.send(:initialize_dag) if new_link.child
 
       ancestor_ids_and_distance = klass.descendant_table_entries.where(:descendant_id => new_link.parent_id).pluck(:ancestor_id, :distance) # (totem => totem pole), (totem_pole => totem_pole)
       descendant_ids_and_distance = klass.descendant_table_entries.where(:ancestor_id => new_link.child_id).pluck(:descendant_id, :distance) # (totem pole model => totem pole model)

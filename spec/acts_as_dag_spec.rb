@@ -497,6 +497,19 @@ describe 'acts_as_dag' do
       end
     end
 
+    describe '#create' do
+      it "sets the receiver's children to the given array" do
+        record = klass.create(:children => [mom, dad])
+        expect(record.children).to contain_exactly(mom, dad)
+      end
+
+      it "updates the descendants of the receiver" do
+        record = klass.create(:children => [mom, dad])
+        record.reload
+        expect(record.descendants).to contain_exactly(mom, dad)
+      end
+    end
+
     describe '::reset_hierarchy' do
       it "reinitialize links and descendants after resetting the hierarchy" do
         mom.add_parent(grandpa)
