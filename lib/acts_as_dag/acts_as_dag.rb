@@ -235,8 +235,8 @@ module ActsAsDAG
     # CALLBACKS
 
     def initialize_dag
-      self.class.descendant_table_entries.where(:ancestor_id => self.id, :descendant_id => self.id, :distance => 0).first_or_create! # Self Descendant
-      self.class.link_table_entries.create!(:parent_id => nil, :child_id => self.id) unless self.class.link_table_entries.exists?(:child_id => self.id)
+      descendant_links.first_or_create!(:descendant_id => self.id, :distance => 0) # Self Descendant
+      parent_links.first_or_create!(:parent_id => nil) # Root link
     end
   end
 
