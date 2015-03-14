@@ -124,12 +124,5 @@ describe 'acts_as_dag' do
     let(:klass) { UnifiedLinkModel }
 
     it_should_behave_like "DAG Model"
-
-    it "should create links that include the category type" do
-      record = klass.create!
-
-      expect(record.parent_links.first.category_type).to eq(klass.name)
-      expect(record.descendant_links.first.category_type).to eq(klass.name)
-    end
   end
 end
