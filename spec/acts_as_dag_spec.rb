@@ -499,14 +499,25 @@ describe 'acts_as_dag' do
 
     describe '#create' do
       it "sets the receiver's children to the given array" do
-        record = klass.create(:children => [mom, dad])
+        record = klass.create!(:children => [mom, dad])
         expect(record.children).to contain_exactly(mom, dad)
       end
 
       it "updates the descendants of the receiver" do
-        record = klass.create(:children => [mom, dad])
+        record = klass.create!(:children => [mom, dad])
         record.reload
         expect(record.descendants).to contain_exactly(mom, dad)
+      end
+
+      it "sets the receiver's parents to the given array" do
+        record = klass.create!(:parents => [mom, dad])
+        expect(record.parents).to contain_exactly(mom, dad)
+      end
+
+      it "updates the ancestors of the receiver" do
+        record = klass.create!(:parents => [mom, dad])
+        record.reload
+        expect(record.ancestors).to contain_exactly(mom, dad)
       end
     end
 

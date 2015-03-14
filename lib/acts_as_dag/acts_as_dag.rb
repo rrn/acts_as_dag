@@ -347,7 +347,6 @@ module ActsAsDAG
   class AbstractLink < ActiveRecord::Base
     self.abstract_class = true
 
-    validates_presence_of :child_id
     validate :not_self_referential
 
     def not_self_referential
