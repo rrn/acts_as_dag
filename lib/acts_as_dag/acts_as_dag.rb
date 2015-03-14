@@ -16,8 +16,8 @@ module ActsAsDAG
       class_eval <<-EOV
         class ::#{options[:link_class]} < ActsAsDAG::AbstractLink
           self.table_name = '#{options[:link_table]}'
-          belongs_to :parent,     :class_name => '#{self.name}', :foreign_key => :parent_id
-          belongs_to :child,      :class_name => '#{self.name}', :foreign_key => :child_id
+          belongs_to :parent,     :class_name => '#{self.name}', :foreign_key => :parent_id, :inverse_of => :child_links
+          belongs_to :child,      :class_name => '#{self.name}', :foreign_key => :child_id, :inverse_of => :parent_links
 
           after_save Proc.new {|link| HelperMethods.update_transitive_closure_for_new_link(link) }
           after_destroy Proc.new {|link| HelperMethods.update_transitive_closure_for_destroyed_link(link) }
@@ -74,8 +74,8 @@ module ActsAsDAG
 
       has_many :parents,          :through => :parent_links, :source => :parent
       has_many :children,         :through => :child_links, :source => :child
-      has_many :parent_links,     lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'child_id', :dependent => :delete_all
-      has_many :child_links,      lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :delete_all
+      has_many :parent_links,     lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'child_id', :dependent => :delete_all, :inverse_of => :child
+      has_many :child_links,      lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :delete_all, :inverse_of => :parent
 
       # NOTE: Use select to prevent ActiveRecord::ReadOnlyRecord if the returned records are modified
       scope :roots,               lambda { select("#{table_name}.*").joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
@@ -264,14 +264,18 @@ module ActsAsDAG
     def self.update_transitive_closure_for_new_link(new_link)
       klass = new_link.node_class
 
-      new_link.parent.send(:initialize_dag) if new_link.parent
-      new_link.child.send(:initialize_dag) if new_link.child
+      # If we're passing :parents or :children to a new record as part of #create, transitive closure on the nested records will
+      # be updated before the new record's after save calls :initialize_dag. We ensure it's been initalized before we start querying
+      # its descendant_table or it won't appear as an ancestor or descendant until too late.
+      new_link.parent.send(:initialize_dag) if new_link.parent && new_link.parent.id_changed?
+      new_link.child.send(:initialize_dag) if new_link.child && new_link.child.id_changed?
 
-      ancestor_ids_and_distance = klass.descendant_table_entries.where(:descendant_id => new_link.parent_id).pluck(:ancestor_id, :distance) # (totem => totem pole), (totem_pole => totem_pole)
-      descendant_ids_and_distance = klass.descendant_table_entries.where(:ancestor_id => new_link.child_id).pluck(:descendant_id, :distance) # (totem pole model => totem pole model)
 
       # The parent and all its ancestors need to be added as ancestors of the child
       # The child and all its descendants need to be added as descendants of the parent
+      ancestor_ids_and_distance = klass.descendant_table_entries.where(:descendant_id => new_link.parent_id).pluck(:ancestor_id, :distance) # (totem => totem pole), (totem_pole => totem_pole)
+      descendant_ids_and_distance = klass.descendant_table_entries.where(:ancestor_id => new_link.child_id).pluck(:descendant_id, :distance) # (totem pole model => totem pole model)
+
       ancestor_ids_and_distance.each do |ancestor_id, ancestor_distance|
         descendant_ids_and_distance.each do |descendant_id, descendant_distance|
           klass.descendant_table_entries.find_or_create_by!(:ancestor_id => ancestor_id, :descendant_id => descendant_id, :distance => ancestor_distance + descendant_distance + 1)
