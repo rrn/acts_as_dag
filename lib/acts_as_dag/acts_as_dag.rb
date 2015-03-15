@@ -77,6 +77,7 @@ module ActsAsDAG
 
       has_many :parents,          :through => :parent_links, :source => :parent
       has_many :children,         :through => :child_links, :source => :child
+
       has_many :parent_links,     lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'child_id', :dependent => :delete_all, :inverse_of => :child
       has_many :child_links,      lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :delete_all, :inverse_of => :parent
 
