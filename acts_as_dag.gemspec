@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'acts_as_dag'
-  s.version = '2.0.0'
+  s.version = '2.0.1'
   s.date = %q{2014-06-05}
   s.email = 'technical@rrnpilot.org'
   s.homepage = 'http://github.com/rrn/acts_as_dag'

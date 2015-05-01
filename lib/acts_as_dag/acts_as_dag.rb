@@ -63,17 +63,17 @@ module ActsAsDAG
       #  \ /
       #   D
       #
-      has_many :ancestors,        lambda { order("#{descendant_class.table_name}.distance DESC") }, :through => :ancestor_links, :source => :ancestor
-      has_many :descendants,      lambda { order("#{descendant_class.table_name}.distance ASC") }, :through => :descendant_links, :source => :descendant
+      has_many :ancestors,        :through => :ancestor_links, :source => :ancestor
+      has_many :descendants,      :through => :descendant_links, :source => :descendant
 
-      has_many :path,             lambda { order("#{descendant_class.table_name}.distance DESC") }, :through => :path_links, :source => :ancestor
-      has_many :subtree,          lambda { order("#{descendant_class.table_name}.distance ASC") }, :through => :subtree_links, :source => :descendant
+      has_many :path,             :through => :path_links, :source => :ancestor
+      has_many :subtree,          :through => :subtree_links, :source => :descendant
 
-      has_many :ancestor_links,   lambda { where(options[:link_conditions]).where("ancestor_id != descendant_id") }, :class_name => descendant_class, :foreign_key => 'descendant_id'
-      has_many :descendant_links, lambda { where(options[:link_conditions]).where("descendant_id != ancestor_id") }, :class_name => descendant_class, :foreign_key => 'ancestor_id'
+      has_many :ancestor_links,   lambda { where(options[:link_conditions]).where("ancestor_id != descendant_id").order("distance DESC") }, :class_name => descendant_class, :foreign_key => 'descendant_id'
+      has_many :descendant_links, lambda { where(options[:link_conditions]).where("descendant_id != ancestor_id").order("distance ASC") }, :class_name => descendant_class, :foreign_key => 'ancestor_id'
 
-      has_many :path_links,       lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
-      has_many :subtree_links,    lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
+      has_many :path_links,       lambda { where(options[:link_conditions]).order("distance DESC") }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
+      has_many :subtree_links,    lambda { where(options[:link_conditions]).order("distance ASC") }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
 
       has_many :parents,          :through => :parent_links, :source => :parent
       has_many :children,         :through => :child_links, :source => :child
