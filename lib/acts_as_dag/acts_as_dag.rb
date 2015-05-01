@@ -56,11 +56,11 @@ module ActsAsDAG
       #  \ /
       #   D
       #
-      has_many :ancestors,        lambda { order("#{descendant_class.table_name}.distance DESC") }, :through => :ancestor_links, :source => :ancestor
-      has_many :descendants,      lambda { order("#{descendant_class.table_name}.distance ASC") }, :through => :descendant_links, :source => :descendant
+      has_many :ancestors,        :through => :ancestor_links, :source => :ancestor
+      has_many :descendants,      :through => :descendant_links, :source => :descendant
 
-      has_many :ancestor_links,   lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
-      has_many :descendant_links, lambda { where options[:link_conditions] }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
+      has_many :ancestor_links,   lambda { where(options[:link_conditions]).order("distance DESC") }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
+      has_many :descendant_links, lambda { where(options[:link_conditions]).order("distance ASC") }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
 
       has_many :parents,          :through => :parent_links, :source => :parent
       has_many :children,         :through => :child_links, :source => :child
