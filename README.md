@@ -1,4 +1,4 @@
-# ActsAsDAG
+# ActsAsDAG [![Gem Version](https://badge.fury.io/rb/acts_as_dag.svg)](http://badge.fury.io/rb/acts_as_dag)
 
 Adds Directed Acyclic Graph functionality to ActiveRecord
 
