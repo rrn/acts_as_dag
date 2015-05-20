@@ -651,6 +651,36 @@ describe 'acts_as_dag' do
         record.reload
         expect(record.ancestors).to contain_exactly(mom, dad)
       end
+
+      it "correctly assigns unsaved parents" do
+        unsaved = klass.new
+        record = klass.create!(:parents => [unsaved])
+        expect(record.parents).to contain_exactly(unsaved)
+      end
+
+      it "correctly assigns chains of unsaved parents" do
+        unsaved_ancestor = klass.new
+        unsaved_parent = klass.new(:parents => [unsaved_ancestor])
+        record = klass.create!(:parents => [unsaved_parent])
+
+        expect(record.parents).to contain_exactly(unsaved_parent)
+        expect(unsaved_parent.parents).to contain_exactly(unsaved_ancestor)
+      end
+
+      it "correctly assigns unsaved children" do
+        unsaved = klass.new
+        record = klass.create!(:children => [unsaved])
+        expect(record.children).to contain_exactly(unsaved)
+      end
+
+      it "correctly assigns chains of unsaved children" do
+        unsaved_descendant = klass.new
+        unsaved_child = klass.new(:children => [unsaved_descendant])
+        record = klass.create!(:children => [unsaved_child])
+
+        expect(record.children).to contain_exactly(unsaved_child)
+        expect(unsaved_child.children).to contain_exactly(unsaved_descendant)
+      end
     end
 
     describe '::reset_hierarchy' do

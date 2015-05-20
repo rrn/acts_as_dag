@@ -346,7 +346,7 @@ module ActsAsDAG
     validate :not_self_referential
 
     def not_self_referential
-      errors.add(:base, "Self referential links #{self.class} cannot be created.") if parent_id == child_id
+      errors.add(:base, "Self referential links #{self.class} cannot be created.") if parent_id && parent_id == child_id
     end
   end
 
