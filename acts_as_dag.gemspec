@@ -1,6 +1,11 @@
+$:.push File.expand_path("../lib", __FILE__)
+
+# Maintain your gem's version:
+require 'acts_as_dag/version'
+
 Gem::Specification.new do |s|
   s.name = 'acts_as_dag'
-  s.version = '2.0.2'
+  s.version = ActsAsDAG::VERSION
   s.date = Date.today
   s.email = 'technical@rrnpilot.org'
   s.homepage = 'http://github.com/rrn/acts_as_dag'
