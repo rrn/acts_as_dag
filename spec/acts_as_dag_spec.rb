@@ -737,20 +737,20 @@ describe 'acts_as_dag' do
       end
     end
 
-    describe '::leafs' do
+    describe '::leaves' do
       it "returns all leaf nodes" do
         mom.add_child(suzy)
-        expect(klass.leafs).to include(suzy)
+        expect(klass.leaves).to include(suzy)
       end
 
       it "doesn't return non-leaf nodes" do
         mom.add_child(suzy)
-        expect(klass.leafs).not_to include(mom)
+        expect(klass.leaves).not_to include(mom)
       end
 
       it "doesn't mark returned records as readonly" do
         mom.add_child(suzy)
-        expect(klass.leafs.none?(&:readonly?)).to be_truthy
+        expect(klass.leaves.none?(&:readonly?)).to be_truthy
       end
     end
 

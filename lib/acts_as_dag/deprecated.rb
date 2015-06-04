@@ -2,6 +2,11 @@ module ActsAsDAG
   module Deprecated
 
     module ClassMethods
+      # Deprecated misspelled method name
+      def leafs
+        leaves
+      end
+
       # Reorganizes the entire class of records based on their name, first resetting the hierarchy, then reoganizing
       # Can pass a list of categories and only those will be reorganized
       def reorganize(categories_to_reorganize = self.all)
