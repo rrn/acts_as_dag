@@ -82,7 +82,7 @@ subtree_ids      Returns a list of all ids in the record's subtree
 
 ```
 roots                   Nodes without parents
-leaves                   Nodes without children
+leaves                  Nodes without children
 ancestors_of(node)      Ancestors of node, node can be either a record or an id
 children_of(node)       Children of node, node can be either a record or an id
 descendants_of(node)    Descendants of node, node can be either a record or an id
