@@ -133,8 +133,14 @@ module ActsAsDAG
     end
 
     def make_root
-      ancestor_links.delete_all
-      parent_links.delete_all
+      unless acts_as_dag_options[:allow_root_and_parent]
+        ancestor_links.delete_all
+        parent_links.delete_all
+        parents.reset
+        children.reset
+        ancestors.reset
+        descendants.reset
+      end
       initialize_dag
     end
 
@@ -165,6 +171,7 @@ module ActsAsDAG
       parents.flatten.each do |parent|
         ActsAsDAG::HelperMethods.link(parent, self)
       end
+      clear_association_cache
     end
 
     # Adds a category as a child of this category (self)
@@ -172,6 +179,7 @@ module ActsAsDAG
       children.flatten.each do |child|
         ActsAsDAG::HelperMethods.link(self, child)
       end
+      clear_association_cache
     end
 
     # Removes a category as a child of this category (self)

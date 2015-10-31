@@ -242,6 +242,11 @@ describe 'acts_as_dag' do
         mom.add_child([suzy, billy])
         expect(mom.children).to include(suzy, billy)
       end
+
+      it "don't require child association to be cleared before detecting the addition" do
+        mom.children.to_a # Ensure association is cached
+        expect{ mom.add_child(suzy) }.to change{ mom.children }
+      end
     end
 
     describe '#add_parent' do
@@ -279,6 +284,11 @@ describe 'acts_as_dag' do
 
       it "removes record from roots" do
         expect{ mom.add_child(suzy) }.to change{ suzy.root? }.from(true).to(false)
+      end
+
+      it "don't require parent association to be cleared before detecting the addition" do
+        suzy.parents.to_a # Ensure association is cached
+        expect{ suzy.add_parent(dad) }.to change{ suzy.parents }
       end
     end
 
