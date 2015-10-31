@@ -76,7 +76,15 @@ module ActsAsDAG
       has_many :path_links,       lambda { where(options[:link_conditions]).order("distance DESC") }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
       has_many :subtree_links,    lambda { where(options[:link_conditions]).order("distance ASC") }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
 
-      has_many :parents,          :through => :parent_links, :source => :parent
+      has_many :parents,          :through => :parent_links, :source => :parent do
+        def <<(other)
+          if other
+            super
+          else
+            proxy_association.owner.make_root
+          end
+        end
+      end
       has_many :children,         :through => :child_links, :source => :child
 
       has_many :parent_links,     lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'child_id', :dependent => :delete_all, :inverse_of => :child

@@ -826,7 +826,7 @@ describe 'acts_as_dag' do
     describe "options" do
       context ":allow_root_and_parent => true" do
         around do |example|
-          with_options(suzy.class, :allow_root_and_parent => true) do
+          with_options(klass, :allow_root_and_parent => true) do
             example.run
           end
         end
@@ -836,7 +836,7 @@ describe 'acts_as_dag' do
         end
 
         it "modifies #make_root so parents are retained" do
-          mom.add_child(suzy)
+          suzy.add_parent(mom)
           expect{ suzy.make_root }.not_to change{ suzy.parents }
         end
 
@@ -844,6 +844,13 @@ describe 'acts_as_dag' do
           suzy.parents = [nil, mom]
           expect(suzy).to be_root
           expect(suzy.parents).to contain_exactly(mom)
+        end
+
+        it "modifies the parents relation shovel operator to make the record a root when passed a nil" do
+          suzy.parents = [mom]
+          suzy.reload
+          suzy.parents << nil
+          expect(suzy).to be_root
         end
       end
     end
