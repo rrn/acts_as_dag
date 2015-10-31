@@ -3,13 +3,14 @@ module ActsAsDAG
   module ActMethod
     def acts_as_dag(options = {})
       class_attribute :acts_as_dag_options
-      options.assert_valid_keys :link_class, :descendant_class, :link_table, :descendant_table, :link_conditions
+      options.assert_valid_keys :allow_root_and_parent, :link_class, :descendant_class, :link_table, :descendant_table, :link_conditions
       options.reverse_merge!(
-        :link_class => "#{self.name}Link",
-        :link_table => "acts_as_dag_links",
-        :descendant_class => "#{self.name}Descendant",
-        :descendant_table => "acts_as_dag_descendants",
-        :link_conditions => {:category_type => self.name})
+        :allow_root_and_parent => false,                              # If false, record is unlinked from root when it gains a parent
+        :link_class            => "#{self.name}Link",
+        :link_table            => "acts_as_dag_links",
+        :descendant_class      => "#{self.name}Descendant",
+        :descendant_table      => "acts_as_dag_descendants",
+        :link_conditions       => {:category_type => self.name})
       self.acts_as_dag_options = options
 
       # Create Link and Descendant Classes
@@ -124,7 +125,7 @@ module ActsAsDAG
   module InstanceMethods
     # Returns true if this record is a root node
     def root?
-      parents.empty?
+      self.class.roots.exists?(self.id)
     end
 
     def leaf?
@@ -142,7 +143,12 @@ module ActsAsDAG
       (self.parents - parents).each do |parent_to_remove|
         remove_parent(parent_to_remove)
       end
-      super
+      super non_root_parents(parents)
+      make_root if self.parents != parents
+    end
+
+    def non_root_parents(parents)
+      parents.reject{|p| p.nil? }
     end
 
     # NOTE: Children that are removed will not trigger the destroy callback on their link, so we need to remove them manually
@@ -237,20 +243,20 @@ module ActsAsDAG
     # child object ids and creates the appropriate entries in the descendant table
     def self.link(parent, child)
       # Sanity check
-      raise "Parent has no ID" if parent.id.nil?
+      raise "Parent has no ID" if parent.try(:id).nil? && !child.class.acts_as_dag_options[:allow_root_and_parent]
       raise "Child has no ID" if child.id.nil?
       raise "Parent and child must be the same class" if parent.class != child.class
 
       klass = child.class
 
       # Return if the link already exists because we can assume that the proper descendants already exist too
-      return if klass.link_table_entries.where(:parent_id => parent.id, :child_id => child.id).exists?
+      return if klass.link_table_entries.where(:parent_id => parent.try(:id), :child_id => child.id).exists?
 
       # Create a new parent-child link
-      klass.link_table_entries.create!(:parent_id => parent.id, :child_id => child.id)
+      klass.link_table_entries.create!(:parent_id => parent.try(:id), :child_id => child.id)
 
       # If we have been passed a parent, find and destroy any existing links from nil (root) to the child as it can no longer be a top-level node
-      unlink(nil, child) if parent
+      unlink(nil, child) if parent && !child.class.acts_as_dag_options[:allow_root_and_parent]
     end
 
     def self.update_transitive_closure_for_new_link(new_link)

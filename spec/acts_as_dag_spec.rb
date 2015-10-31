@@ -5,6 +5,15 @@ describe 'acts_as_dag' do
     klass.destroy_all # Because we're using sqlite3 and it doesn't support transactional specs (afaik)
   end
 
+  # Merge the given acts_as_dag_options for the duration of the block
+  def with_options(klass, options)
+    old_options = klass.acts_as_dag_options
+    klass.acts_as_dag_options = klass.acts_as_dag_options.merge(options)
+    yield
+  ensure
+    klass.acts_as_dag_options = old_options
+  end
+
   shared_examples_for "DAG Model" do
     let (:grandpa) { klass.create(:name => 'grandpa') }
     let (:dad) { klass.create(:name => 'dad') }
@@ -266,6 +275,10 @@ describe 'acts_as_dag' do
       it "accepts an array of records, adding each as a parent" do
         suzy.add_parent([mom, dad])
         expect(suzy.parents).to include(mom, dad)
+      end
+
+      it "removes record from roots" do
+        expect{ mom.add_child(suzy) }.to change{ suzy.root? }.from(true).to(false)
       end
     end
 
@@ -561,6 +574,18 @@ describe 'acts_as_dag' do
         suzy.parents = []
         expect(suzy.ancestors).to contain_exactly
       end
+
+      it "makes the receiver a root when set passed a nil array" do
+        suzy.add_parent(mom)
+        suzy.parents = [nil]
+        expect(suzy).to be_root
+      end
+
+      it "makes the receiver a root when set passed an empty array" do
+        suzy.add_parent(mom)
+        suzy.parents = []
+        expect(suzy).to be_root
+      end
     end
 
     describe '#children=' do
@@ -785,6 +810,31 @@ describe 'acts_as_dag' do
       it "doesn't mark returned records as readonly" do
         mom.add_child(suzy)
         expect(klass.parent_records.none?(&:readonly?)).to be_truthy
+      end
+    end
+
+    describe "options" do
+      context ":allow_root_and_parent => true" do
+        around do |example|
+          with_options(suzy.class, :allow_root_and_parent => true) do
+            example.run
+          end
+        end
+
+        it 'modifies ::link so child remains a root node when it gains a parent' do
+          expect{ mom.add_child(suzy) }.not_to change{ suzy.root? }
+        end
+
+        it "modifies #make_root so parents are retained" do
+          mom.add_child(suzy)
+          expect{ suzy.make_root }.not_to change{ suzy.parents }
+        end
+
+        it "allows #parents= to make the receiver a root and a child of another record" do
+          suzy.parents = [nil, mom]
+          expect(suzy).to be_root
+          expect(suzy.parents).to contain_exactly(mom)
+        end
       end
     end
 
