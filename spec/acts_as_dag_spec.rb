@@ -243,9 +243,8 @@ describe 'acts_as_dag' do
         expect(mom.children).to include(suzy, billy)
       end
 
-      it "don't require child association to be cleared before detecting the addition" do
-        mom.children.to_a # Ensure association is cached
-        expect{ mom.add_child(suzy) }.to change{ mom.children }
+      it "don't require manualy uncaching of child association to detect the addition" do
+        expect{ mom.add_child(suzy) }.to change{ mom.children.to_a }
       end
     end
 
@@ -286,9 +285,8 @@ describe 'acts_as_dag' do
         expect{ mom.add_child(suzy) }.to change{ suzy.root? }.from(true).to(false)
       end
 
-      it "don't require parent association to be cleared before detecting the addition" do
-        suzy.parents.to_a # Ensure association is cached
-        expect{ suzy.add_parent(dad) }.to change{ suzy.parents }
+      it "don't require manualy uncaching of child association to detect the addition" do
+        expect{ suzy.add_parent(dad) }.to change{ suzy.parents.to_a }
       end
     end
 

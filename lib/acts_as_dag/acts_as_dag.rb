@@ -131,38 +131,24 @@ module ActsAsDAG
   end
 
   module InstanceMethods
-    # Returns true if this record is a root node
-    def root?
-      self.class.roots.exists?(self.id)
-    end
-
-    def leaf?
-      children.empty?
-    end
-
-    def make_root
-      unless acts_as_dag_options[:allow_root_and_parent]
-        ancestor_links.delete_all
-        parent_links.delete_all
-        parents.reset
-        children.reset
-        ancestors.reset
-        descendants.reset
-      end
-      initialize_dag
-    end
-
     # NOTE: Parents that are removed will not trigger the destroy callback on their link, so we need to remove them manually
     def parents=(parents)
       (self.parents - parents).each do |parent_to_remove|
         remove_parent(parent_to_remove)
       end
-      super non_root_parents(parents)
-      make_root if self.parents != parents
-    end
 
-    def non_root_parents(parents)
-      parents.reject{|p| p.nil? }
+      parents_except_root = ActsAsDAG::HelperMethods.except_root(parents)
+      parents_contained_root = parents != parents_except_root
+
+      super parents_except_root
+
+      if self.parents.empty? && !acts_as_dag_options[:allow_root_and_parent]
+        make_root
+      elsif parents_contained_root
+        make_root
+      else
+        unroot
+      end
     end
 
     # NOTE: Children that are removed will not trigger the destroy callback on their link, so we need to remove them manually
@@ -171,37 +157,6 @@ module ActsAsDAG
         remove_child(child_to_remove)
       end
       super
-    end
-
-
-    # Adds a category as a parent of this category (self)
-    def add_parent(*parents)
-      parents.flatten.each do |parent|
-        ActsAsDAG::HelperMethods.link(parent, self)
-      end
-      clear_association_cache
-    end
-
-    # Adds a category as a child of this category (self)
-    def add_child(*children)
-      children.flatten.each do |child|
-        ActsAsDAG::HelperMethods.link(self, child)
-      end
-      clear_association_cache
-    end
-
-    # Removes a category as a child of this category (self)
-    # Returns the child
-    def remove_child(child)
-      ActsAsDAG::HelperMethods.unlink(self, child)
-      return child
-    end
-
-    # Removes a category as a parent of this category (self)
-    # Returns the parent
-    def remove_parent(parent)
-      ActsAsDAG::HelperMethods.unlink(parent, self)
-      return parent
     end
 
     # Returns true if the category's children include *self*
@@ -273,6 +228,9 @@ module ActsAsDAG
 
       # If we have been passed a parent, find and destroy any existing links from nil (root) to the child as it can no longer be a top-level node
       unlink(nil, child) if parent && !child.class.acts_as_dag_options[:allow_root_and_parent]
+
+      parent.children.reset if parent
+      child.parents.reset
     end
 
     def self.update_transitive_closure_for_new_link(new_link)
@@ -307,6 +265,8 @@ module ActsAsDAG
 
       # delete the link if it exists
       klass.link_table_entries.where(:parent_id => parent.try(:id), :child_id => child.id).destroy_all
+      parent.children.reset if parent
+      child.parents.reset
     end
 
     def self.update_transitive_closure_for_destroyed_link(destroyed_link)
