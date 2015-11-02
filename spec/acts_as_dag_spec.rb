@@ -594,6 +594,12 @@ describe 'acts_as_dag' do
         suzy.parents = []
         expect(suzy).to be_root
       end
+
+      it "unroots the receiver when set passed a non-empty array" do
+        suzy.parents = []
+        suzy.parents = [mom]
+        expect(suzy).not_to be_root
+      end
     end
 
     describe '#children=' do

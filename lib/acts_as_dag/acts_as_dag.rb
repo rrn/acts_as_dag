@@ -199,6 +199,57 @@ module ActsAsDAG
       self.class.joins("JOIN (#{lineage_links.to_sql}) lineage_links ON #{self.class.table_name}.id = lineage_links.id").order("CASE ancestor_id WHEN #{id} THEN distance ELSE -distance END") # Ensure the links are orders furthest ancestor to furthest descendant
     end
 
+    # Returns true if this record is a root node
+    def root?
+      self.class.roots.exists?(self.id)
+    end
+
+    def leaf?
+      children.empty?
+    end
+
+    def make_root
+      unless acts_as_dag_options[:allow_root_and_parent]
+        parents.each do |parent|
+          remove_parent(parent)
+        end
+      end
+
+      add_parent(nil)
+    end
+
+    def unroot
+      remove_parent(nil)
+    end
+
+    # Adds a category as a parent of this category (self)
+    def add_parent(*parents)
+      parents.flatten.each do |parent|
+        ActsAsDAG::HelperMethods.link(parent, self)
+      end
+    end
+
+    # Adds a category as a child of this category (self)
+    def add_child(*children)
+      children.flatten.each do |child|
+        ActsAsDAG::HelperMethods.link(self, child)
+      end
+    end
+
+    # Removes a category as a child of this category (self)
+    # Returns the child
+    def remove_child(child)
+      ActsAsDAG::HelperMethods.unlink(self, child)
+      return child
+    end
+
+    # Removes a category as a parent of this category (self)
+    # Returns the parent
+    def remove_parent(parent)
+      ActsAsDAG::HelperMethods.unlink(parent, self)
+      return parent
+    end
+
     private
 
     # CALLBACKS
@@ -210,13 +261,18 @@ module ActsAsDAG
   end
 
   module HelperMethods
+    # Returns only records that aren't the root node (nil)
+    def self.except_root(records)
+      records.reject{|p| p.nil? }
+    end
+
     # creates a single link in the given link_class's link table between parent and
     # child object ids and creates the appropriate entries in the descendant table
     def self.link(parent, child)
       # Sanity check
-      raise "Parent has no ID" if parent.try(:id).nil? && !child.class.acts_as_dag_options[:allow_root_and_parent]
+      raise "Parent has no ID" if parent && parent.try(:id).nil?
       raise "Child has no ID" if child.id.nil?
-      raise "Parent and child must be the same class" if parent.class != child.class
+      raise "Parent and child must be the same class" if parent && parent.class != child.class
 
       klass = child.class
 
