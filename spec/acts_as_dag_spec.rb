@@ -233,6 +233,12 @@ describe 'acts_as_dag' do
         expect(mom.children).to include(suzy, billy)
       end
 
+      it "ignores children that are already added" do
+        mom.add_child(suzy)
+        mom.add_child(suzy)
+        expect(mom.children).not_to be_many
+      end
+
       it "accepts multiple arguments, adding each as a child" do
         mom.add_child(suzy, billy)
         expect(mom.children).to include(suzy, billy)
@@ -269,6 +275,12 @@ describe 'acts_as_dag' do
         suzy.add_parent(mom)
         suzy.add_parent(dad)
         expect(suzy.parents).to include(mom, dad)
+      end
+
+      it "ignores parents that are already added" do
+        suzy.add_parent(mom)
+        suzy.add_parent(mom)
+        expect(suzy.parents).not_to be_many
       end
 
       it "accepts multiple arguments, adding each as a parent" do
@@ -571,6 +583,11 @@ describe 'acts_as_dag' do
 
       it "updates the ancestors of the receiver" do
         expect(suzy.ancestors).to eq([mom, dad])
+      end
+
+      it "ignores duplicate parents" do
+        suzy.parents = [mom, mom]
+        expect(suzy.parents).not_to be_many
       end
 
       it "unsets the receiver's parents when given an empty array" do
