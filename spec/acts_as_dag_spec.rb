@@ -844,6 +844,36 @@ describe 'acts_as_dag' do
       end
     end
 
+    describe '#distance_to' do
+      it 'returns the distance between the receiver and the given record' do
+        mom.add_child(suzy)
+        mom.add_parent(grandpa)
+
+        expect(suzy.distance_to(grandpa)).to eq(2)
+      end
+
+      it 'returns the minimum distance between the receiver and the given record when multiple paths exist' do
+        mom.add_child(suzy)
+        dad.add_child(suzy)
+        billy.add_child(mom)
+        grandpa.add_child(dad, billy)
+
+        expect(suzy.distance_to(grandpa)).to eq(2)
+      end
+
+      it 'returns nil if no path exists between the receiver and the given record' do
+        expect(mom.distance_to(suzy)).to eq(2)
+      end
+
+      it 'returns correct distance if the receiver is indirectly linked to, but is not an ancestor or descendant of the given record' do
+        pending
+        mom.add_child(suzy)
+        mom.add_child(billy)
+
+        expect(billy.distance_to(suzy)).to eq(2)
+      end
+    end
+
     describe "options" do
       context ":allow_root_and_parent => true" do
         around do |example|

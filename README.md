@@ -76,6 +76,7 @@ descendants      Scopes the model on direct and indirect children of the record
 descendant_ids   Returns a list of a descendant ids
 subtree          Scopes the model on descendants and itself
 subtree_ids      Returns a list of all ids in the record's subtree
+distance_to      Returns the minimum number of ancestors/descendants between two records, e.g. child.distance_to(grandpa) #=> 2
 ```
 
 ## Scopes

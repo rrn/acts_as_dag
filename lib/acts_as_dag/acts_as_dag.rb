@@ -199,6 +199,13 @@ module ActsAsDAG
       self.class.joins("JOIN (#{lineage_links.to_sql}) lineage_links ON #{self.class.table_name}.id = lineage_links.id").order("CASE ancestor_id WHEN #{id} THEN distance ELSE -distance END") # Ensure the links are orders furthest ancestor to furthest descendant
     end
 
+    def distance_to(other)
+      self.class.descendant_table_entries
+        .where(:ancestor_id => [self.id, other.id], :descendant_id => [self.id, other.id])
+        .where('ancestor_id != descendant_id')
+        .minimum(:distance)
+    end
+
     # Returns true if this record is a root node
     def root?
       self.class.roots.exists?(self.id)
