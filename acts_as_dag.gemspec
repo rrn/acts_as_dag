@@ -7,7 +7,7 @@ Gem::Specification.new do |s|
   s.summary = 'Adds directed acyclic graph functionality to ActiveRecord.'
   s.authors = ['Nicholas Jakobsen', 'Ryan Wallace']
 
-  s.add_dependency('activerecord', '~> 4.0')
+  s.add_dependency('activerecord', '> 4.0')
 
   s.require_paths = ["lib"]
   s.files = Dir.glob("{lib,spec}/**/*") + %w(LICENSE README.rdoc)
