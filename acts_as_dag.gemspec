@@ -1,5 +1,7 @@
 $:.push File.expand_path("../lib", __FILE__)
 
+require 'date'
+
 # Maintain your gem's version:
 require 'acts_as_dag/version'
 
@@ -12,7 +14,7 @@ Gem::Specification.new do |s|
   s.summary = 'Adds directed acyclic graph functionality to ActiveRecord.'
   s.authors = ['Nicholas Jakobsen', 'Ryan Wallace']
 
-  s.add_dependency('activerecord', '>= 4.0', '< 5.2')
+  s.add_dependency('activerecord', '~> 5.1.0')
   s.add_development_dependency('rspec', '~> 3.2')
 
   s.require_paths = ["lib"]

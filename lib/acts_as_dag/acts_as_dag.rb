@@ -64,17 +64,20 @@ module ActsAsDAG
       #  \ /
       #   D
       #
+      has_many :ancestor_links,   -> { where(options[:link_conditions]).where("ancestor_id != descendant_id").order("distance DESC") }, :class_name => descendant_class.name, :foreign_key => 'descendant_id'
+      has_many :descendant_links, -> { where(options[:link_conditions]).where("descendant_id != ancestor_id").order("distance ASC") }, :class_name => descendant_class.name, :foreign_key => 'ancestor_id'
+
+      has_many :path_links,       -> { where(options[:link_conditions]).order("distance DESC") }, :class_name => descendant_class.name, :foreign_key => 'descendant_id', :dependent => :delete_all
+      has_many :subtree_links,    -> { where(options[:link_conditions]).order("distance ASC") }, :class_name => descendant_class.name, :foreign_key => 'ancestor_id', :dependent => :delete_all
+
       has_many :ancestors,        :through => :ancestor_links, :source => :ancestor
       has_many :descendants,      :through => :descendant_links, :source => :descendant
 
       has_many :path,             :through => :path_links, :source => :ancestor
       has_many :subtree,          :through => :subtree_links, :source => :descendant
 
-      has_many :ancestor_links,   lambda { where(options[:link_conditions]).where("ancestor_id != descendant_id").order("distance DESC") }, :class_name => descendant_class, :foreign_key => 'descendant_id'
-      has_many :descendant_links, lambda { where(options[:link_conditions]).where("descendant_id != ancestor_id").order("distance ASC") }, :class_name => descendant_class, :foreign_key => 'ancestor_id'
-
-      has_many :path_links,       lambda { where(options[:link_conditions]).order("distance DESC") }, :class_name => descendant_class, :foreign_key => 'descendant_id', :dependent => :delete_all
-      has_many :subtree_links,    lambda { where(options[:link_conditions]).order("distance ASC") }, :class_name => descendant_class, :foreign_key => 'ancestor_id', :dependent => :delete_all
+      has_many :parent_links,     -> { where options[:link_conditions] }, :class_name => link_class.name, :foreign_key => 'child_id', :dependent => :delete_all, :inverse_of => :child
+      has_many :child_links,      -> { where options[:link_conditions] }, :class_name => link_class.name, :foreign_key => 'parent_id', :dependent => :delete_all, :inverse_of => :parent
 
       has_many :parents,          :through => :parent_links, :source => :parent do
         def <<(other)
@@ -87,19 +90,16 @@ module ActsAsDAG
       end
       has_many :children,         :through => :child_links, :source => :child
 
-      has_many :parent_links,     lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'child_id', :dependent => :delete_all, :inverse_of => :child
-      has_many :child_links,      lambda { where options[:link_conditions] }, :class_name => link_class, :foreign_key => 'parent_id', :dependent => :delete_all, :inverse_of => :parent
-
       # NOTE: Use select to prevent ActiveRecord::ReadOnlyRecord if the returned records are modified
-      scope :roots,               lambda { joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
-      scope :leaves,               lambda { joins("LEFT OUTER JOIN #{link_class.table_name} ON #{table_name}.id = parent_id").where(link_class.table_name => {:child_id => nil}).uniq }
-      scope :children,            lambda { joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).uniq }
-      scope :parent_records,      lambda { joins(:child_links).where.not(link_class.table_name => {:child_id => nil}).uniq }
+      scope :roots,               -> { joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
+      scope :leaves,              -> { joins("LEFT OUTER JOIN #{link_class.table_name} ON #{table_name}.id = parent_id").where(link_class.table_name => {:child_id => nil}).uniq }
+      scope :children,            -> { joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).uniq }
+      scope :parent_records,      -> { joins(:child_links).where.not(link_class.table_name => {:child_id => nil}).uniq }
 
-      scope :ancestors_of,        lambda {|record| joins(:descendant_links).where("descendant_id = ?", record) }
-      scope :descendants_of,      lambda {|record| joins(:ancestor_links).where("ancestor_id = ?", record) }
-      scope :path_of,             lambda {|record| joins(:subtree_links).where("descendant_id = ?", record) }
-      scope :subtree_of,          lambda {|record| joins(:path_links).where("ancestor_id = ?", record) }
+      scope :ancestors_of,        ->(record) { joins(:descendant_links).where("descendant_id = ?", record) }
+      scope :descendants_of,      ->(record) { joins(:ancestor_links).where("ancestor_id = ?", record) }
+      scope :path_of,             ->(record) { joins(:subtree_links).where("descendant_id = ?", record) }
+      scope :subtree_of,          ->(record) { joins(:path_links).where("ancestor_id = ?", record) }
 
       after_create :initialize_dag
 
@@ -270,7 +270,7 @@ module ActsAsDAG
   module HelperMethods
     # Returns only records that aren't the root node (nil)
     def self.except_root(records)
-      records.reject{|p| p.nil? }
+      records.reject {|p| p.nil? }
     end
 
     # creates a single link in the given link_class's link table between parent and
@@ -302,8 +302,8 @@ module ActsAsDAG
       # If we're passing :parents or :children to a new record as part of #create, transitive closure on the nested records will
       # be updated before the new record's after save calls :initialize_dag. We ensure it's been initalized before we start querying
       # its descendant_table or it won't appear as an ancestor or descendant until too late.
-      new_link.parent.send(:initialize_dag) if new_link.parent && new_link.parent.id_changed?
-      new_link.child.send(:initialize_dag) if new_link.child && new_link.child.id_changed?
+      new_link.parent.send(:initialize_dag) if new_link.parent && new_link.parent.saved_change_to_id?
+      new_link.child.send(:initialize_dag) if new_link.child && new_link.child.saved_change_to_id?
 
 
       # The parent and all its ancestors need to be added as ancestors of the child
@@ -354,7 +354,7 @@ module ActsAsDAG
 
       # Now iterate through all ancestors of the subtree_links that were deleted and pick only those that have no parents, namely (A, D)
       # These will be the starting points for the recreation of descendant links
-      starting_points = klass.find(parent.path_ids + child.subtree_ids).select{|node| node.parents.empty? || node.parents == [nil] }
+      starting_points = klass.find(parent.path_ids + child.subtree_ids).select {|node| node.parents.empty? || node.parents == [nil] }
 
       # POSSIBLE OPTIMIZATION: The two starting points may share descendants. We only need to process each node once, so if we could skip dups, that would be good
       starting_points.each{|node| rebuild_subtree_links(node)}

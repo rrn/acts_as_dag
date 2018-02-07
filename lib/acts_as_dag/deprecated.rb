@@ -68,7 +68,7 @@ module ActsAsDAG
               other.add_parent(new_parent)
 
               # We've just affected the associations in ways we can not possibly imagine, so let's clear the association cache
-              current.clear_association_cache
+              current.reload
             end
             return true
           end

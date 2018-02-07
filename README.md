@@ -137,6 +137,10 @@ siblings_of(node)       Siblings of node, node can be either a record or an id
 ### Remove deprecated functionality
 This gem was extracted from an early project. Functionality required for that project found its way into the gem, but is only incidentally related to the generation of the DAG. This has been moved to the ActsAsDag::Deprecated module, and will be removed in a future version.
 
+## Tests
+
+`bundle exec rspec` to run tests.
+
 ## Credits
 
 Thanks you to the developers of the Ancestry gem for inspiring the list of accessors and scopes
