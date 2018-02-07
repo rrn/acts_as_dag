@@ -862,7 +862,7 @@ describe 'acts_as_dag' do
       end
 
       it 'returns nil if no path exists between the receiver and the given record' do
-        expect(mom.distance_to(suzy)).to eq(2)
+        expect(mom.distance_to(suzy)).to eq(nil)
       end
 
       it 'returns correct distance if the receiver is indirectly linked to, but is not an ancestor or descendant of the given record' do

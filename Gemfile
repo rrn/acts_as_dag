@@ -4,5 +4,6 @@ gemspec
 
 group :test do
   gem 'rspec'
+  gem 'pry'
   gem 'sqlite3'
 end

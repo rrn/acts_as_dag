@@ -19,11 +19,16 @@ GEM
       minitest (~> 5.1)
       tzinfo (~> 1.1)
     arel (8.0.0)
+    coderay (1.1.2)
     concurrent-ruby (1.0.5)
     diff-lcs (1.3)
     i18n (0.9.3)
       concurrent-ruby (~> 1.0)
+    method_source (0.9.0)
     minitest (5.11.3)
+    pry (0.11.3)
+      coderay (~> 1.1.0)
+      method_source (~> 0.9.0)
     rspec (3.7.0)
       rspec-core (~> 3.7.0)
       rspec-expectations (~> 3.7.0)
@@ -47,6 +52,7 @@ PLATFORMS
 
 DEPENDENCIES
   acts_as_dag!
+  pry
   rspec
   sqlite3
 
