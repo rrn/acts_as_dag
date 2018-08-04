@@ -14,11 +14,11 @@ module ActsAsDAG
       self.acts_as_dag_options = options
 
       # Create Link and Descendant Classes
-      class_eval <<-EOV
+      class_eval <<-RUBY
         class ::#{options[:link_class]} < ActsAsDAG::AbstractLink
           self.table_name = '#{options[:link_table]}'
-          belongs_to :parent,     :class_name => '#{self.name}', :foreign_key => :parent_id, :inverse_of => :child_links
-          belongs_to :child,      :class_name => '#{self.name}', :foreign_key => :child_id, :inverse_of => :parent_links
+          belongs_to :parent, :class_name => '#{self.name}', :foreign_key => :parent_id, :inverse_of => :child_links
+          belongs_to :child, :class_name => '#{self.name}', :foreign_key => :child_id, :inverse_of => :parent_links
 
           after_save Proc.new {|link| HelperMethods.update_transitive_closure_for_new_link(link) }
           after_destroy Proc.new {|link| HelperMethods.update_transitive_closure_for_destroyed_link(link) }
@@ -28,7 +28,7 @@ module ActsAsDAG
 
         class ::#{options[:descendant_class]} < ActsAsDAG::AbstractDescendant
           self.table_name = '#{options[:descendant_table]}'
-          belongs_to :ancestor,   :class_name => '#{self.name}', :foreign_key => :ancestor_id
+          belongs_to :ancestor, :class_name => '#{self.name}', :foreign_key => :ancestor_id
           belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => :descendant_id
 
           def node_class; #{self.name} end
@@ -41,7 +41,7 @@ module ActsAsDAG
         def self.descendant_class
           ::#{options[:descendant_class]}
         end
-      EOV
+      RUBY
 
       # Returns a relation scoping to only link table entries that match the link conditions
       def self.link_table_entries
@@ -53,11 +53,9 @@ module ActsAsDAG
         descendant_class.where(acts_as_dag_options[:link_conditions])
       end
 
-      # Ancestors and descendants returned *include* self, e.g. A's descendants are [A,B,C,D]
-      # Ancestors must always be returned in order of most distant to least
-      # Descendants must always be returned in order of least distant to most
-      # NOTE: Rails 4.0.0 currently ignores the order clause when eager loading, so results may not be returned in the correct order
-      # NOTE: multiple instances of the same descendant/ancestor may be returned if there are multiple paths from ancestor to descendant
+      # Rails 4.0.0 currently ignores the order clause when eager loading, so results may not be returned in the correct order
+      # Ancestors must always be returned in order of most distant to least, e.g. D's ancestors are [A, B, C] or [A, C, B]
+      # Descendants must always be returned in order of least distant to most, e.g. A's descendants are [B, C, D] or [C, B, D]
       #   A
       #  / \
       # B   C
@@ -92,9 +90,9 @@ module ActsAsDAG
 
       # NOTE: Use select to prevent ActiveRecord::ReadOnlyRecord if the returned records are modified
       scope :roots,               -> { joins(:parent_links).where(link_class.table_name => {:parent_id => nil}) }
-      scope :leaves,              -> { joins("LEFT OUTER JOIN #{link_class.table_name} ON #{table_name}.id = parent_id").where(link_class.table_name => {:child_id => nil}).uniq }
-      scope :children,            -> { joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).uniq }
-      scope :parent_records,      -> { joins(:child_links).where.not(link_class.table_name => {:child_id => nil}).uniq }
+      scope :leaves,              -> { joins("LEFT OUTER JOIN #{link_class.table_name} ON #{table_name}.id = parent_id").where(link_class.table_name => {:child_id => nil}).distinct }
+      scope :children,            -> { joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).distinct }
+      scope :parent_records,      -> { joins(:child_links).where.not(link_class.table_name => {:child_id => nil}).distinct }
 
       scope :ancestors_of,        ->(record) { joins(:descendant_links).where("descendant_id = ?", record) }
       scope :descendants_of,      ->(record) { joins(:ancestor_links).where("ancestor_id = ?", record) }
@@ -292,8 +290,8 @@ module ActsAsDAG
       # If we have been passed a parent, find and destroy any existing links from nil (root) to the child as it can no longer be a top-level node
       unlink(nil, child) if parent && !child.class.acts_as_dag_options[:allow_root_and_parent]
 
-      parent.children.reset if parent
-      child.parents.reset
+      parent.children.reset if parent && parent.persisted?
+      child.parents.reset if child.persisted?
     end
 
     def self.update_transitive_closure_for_new_link(new_link)
@@ -305,6 +303,8 @@ module ActsAsDAG
       new_link.parent.send(:initialize_dag) if new_link.parent && new_link.parent.saved_change_to_id?
       new_link.child.send(:initialize_dag) if new_link.child && new_link.child.saved_change_to_id?
 
+      # FIXME: There is some bug that causes link to set the association, but not the foreign key when multiple parents are assigned simultaneously during create
+      new_link.child_id = new_link.child.id if new_link.child
 
       # The parent and all its ancestors need to be added as ancestors of the child
       # The child and all its descendants need to be added as descendants of the parent
@@ -328,8 +328,8 @@ module ActsAsDAG
 
       # delete the link if it exists
       klass.link_table_entries.where(:parent_id => parent.try(:id), :child_id => child.id).destroy_all
-      parent.children.reset if parent
-      child.parents.reset
+      parent.children.reset if parent && parent.persisted?
+      child.parents.reset if child.persisted?
     end
 
     def self.update_transitive_closure_for_destroyed_link(destroyed_link)
