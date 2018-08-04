@@ -52,9 +52,8 @@ module ActsAsDAG
         descendant_class.where(acts_as_dag_options[:link_conditions])
       end
 
-      # Ancestors and descendants returned *include* self, e.g. A's descendants are [A,B,C,D]
-      # Ancestors must always be returned in order of most distant to least
-      # Descendants must always be returned in order of least distant to most
+      # Ancestors must always be returned in order of most distant to least, e.g. D's ancestors are [A, B, C] or [A, C, B]
+      # Descendants must always be returned in order of least distant to most, e.g. A's descendants are [B, C, D] or [C, B, D]
       # NOTE: Rails 4.0.0 currently ignores the order clause when eager loading, so results may not be returned in the correct order
       # NOTE: multiple instances of the same descendant/ancestor may be returned if there are multiple paths from ancestor to descendant
       #   A
