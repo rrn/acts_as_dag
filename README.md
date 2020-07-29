@@ -138,4 +138,4 @@ This gem was extracted from an early project. Functionality required for that pr
 
 ## Credits
 
-Thanks you to the developers of the Ancestry gem for inspiring the list of accessors and scopes
+Thank you to the developers of the Ancestry gem for inspiring the list of accessors and scopes
