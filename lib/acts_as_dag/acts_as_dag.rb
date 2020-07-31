@@ -138,7 +138,7 @@ module ActsAsDAG
       parents_except_root = ActsAsDAG::HelperMethods.except_root(parents)
       parents_contained_root = parents != parents_except_root
 
-      super parents_except_root
+      super parents_except_root.uniq
 
       if self.parents.empty? && !acts_as_dag_options[:allow_root_and_parent]
         make_root
