@@ -94,10 +94,10 @@ module ActsAsDAG
       scope :children,            -> { joins(:parent_links).where.not(link_class.table_name => {:parent_id => nil}).distinct }
       scope :parent_records,      -> { joins(:child_links).where.not(link_class.table_name => {:child_id => nil}).distinct }
 
-      scope :ancestors_of,        ->(record) { joins(:descendant_links).where("descendant_id = ?", record) }
-      scope :descendants_of,      ->(record) { joins(:ancestor_links).where("ancestor_id = ?", record) }
-      scope :path_of,             ->(record) { joins(:subtree_links).where("descendant_id = ?", record) }
-      scope :subtree_of,          ->(record) { joins(:path_links).where("ancestor_id = ?", record) }
+      scope :ancestors_of,        ->(record) { joins(:descendant_links).where(descendant_class.table_name => { :descendant_id => record }).distinct }
+      scope :descendants_of,      ->(record) { joins(:ancestor_links).where(descendant_class.table_name => { :ancestor_id => record }).distinct }
+      scope :path_of,             ->(record) { joins(:subtree_links).where(descendant_class.table_name => { :descendant_id => record }).distinct }
+      scope :subtree_of,          ->(record) { joins(:path_links).where(descendant_class.table_name => { :ancestor_id => record }).distinct }
 
       after_create :initialize_dag
 

@@ -84,10 +84,10 @@ distance_to      Returns the minimum number of ancestors/descendants between two
 ```
 roots                   Nodes without parents
 leaves                  Nodes without children
-ancestors_of(node)      Ancestors of node, node can be either a record or an id
-children_of(node)       Children of node, node can be either a record or an id
-descendants_of(node)    Descendants of node, node can be either a record or an id
-subtree_of(node)        Subtree of node, node can be either a record or an id
+ancestors_of(node)      Ancestors of node, node can be either a record, id, scope, or array
+children_of(node)       Children of node, node can be either a record, id, scope, or array
+descendants_of(node)    Descendants of node, node can be either a record, id, scope, or array
+subtree_of(node)        Subtree of node, node can be either a record, id, scope, or array
 ```
 
 
