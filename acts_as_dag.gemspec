@@ -16,6 +16,7 @@ Gem::Specification.new do |s|
 
   s.add_dependency('activerecord', '>= 5.1')
   s.add_development_dependency('rspec', '~> 3.2')
+  s.add_development_dependency('sqlite3')
 
   s.require_paths = ["lib"]
   s.files = Dir.glob("{lib,spec}/**/*") + %w(LICENSE README.md)
