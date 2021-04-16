@@ -62,11 +62,11 @@ module ActsAsDAG
       #  \ /
       #   D
       #
-      has_many :ancestor_links,   -> { where(options[:link_conditions]).where("ancestor_id != descendant_id").order("distance DESC") }, :class_name => descendant_class.name, :foreign_key => 'descendant_id'
-      has_many :descendant_links, -> { where(options[:link_conditions]).where("descendant_id != ancestor_id").order("distance ASC") }, :class_name => descendant_class.name, :foreign_key => 'ancestor_id'
+      has_many :ancestor_links,   -> { where(options[:link_conditions]).where("ancestor_id != descendant_id").order(:distance => :desc) }, :class_name => descendant_class.name, :foreign_key => 'descendant_id'
+      has_many :descendant_links, -> { where(options[:link_conditions]).where("descendant_id != ancestor_id").order(:distance => :asc) }, :class_name => descendant_class.name, :foreign_key => 'ancestor_id'
 
-      has_many :path_links,       -> { where(options[:link_conditions]).order("distance DESC") }, :class_name => descendant_class.name, :foreign_key => 'descendant_id', :dependent => :delete_all
-      has_many :subtree_links,    -> { where(options[:link_conditions]).order("distance ASC") }, :class_name => descendant_class.name, :foreign_key => 'ancestor_id', :dependent => :delete_all
+      has_many :path_links,       -> { where(options[:link_conditions]).order(:distance => :desc) }, :class_name => descendant_class.name, :foreign_key => 'descendant_id', :dependent => :delete_all
+      has_many :subtree_links,    -> { where(options[:link_conditions]).order(:distance => :asc) }, :class_name => descendant_class.name, :foreign_key => 'ancestor_id', :dependent => :delete_all
 
       has_many :ancestors,        :through => :ancestor_links, :source => :ancestor
       has_many :descendants,      :through => :descendant_links, :source => :descendant
@@ -103,8 +103,6 @@ module ActsAsDAG
 
       extend ActsAsDAG::ClassMethods
       include ActsAsDAG::InstanceMethods
-      extend ActsAsDAG::Deprecated::ClassMethods
-      include ActsAsDAG::Deprecated::InstanceMethods
     end
   end
 
