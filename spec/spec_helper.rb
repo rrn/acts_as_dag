@@ -4,6 +4,7 @@ require 'pry'
 require 'active_record'
 require 'logger'
 require 'acts_as_dag'
+require 'byebug'
 
 puts ActiveRecord.version
 
