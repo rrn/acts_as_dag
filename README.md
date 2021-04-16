@@ -87,6 +87,7 @@ leaves                  Nodes without children
 ancestors_of(node)      Ancestors of node, node can be either a record, id, scope, or array
 children_of(node)       Children of node, node can be either a record, id, scope, or array
 descendants_of(node)    Descendants of node, node can be either a record, id, scope, or array
+path_of(node)           Node and ancestors of node, node can be either a record, id, scope, or array
 subtree_of(node)        Subtree of node, node can be either a record, id, scope, or array
 ```
 
@@ -143,4 +144,4 @@ This gem was extracted from an early project. Functionality required for that pr
 
 ## Credits
 
-Thanks you to the developers of the Ancestry gem for inspiring the list of accessors and scopes
+Thank you to the developers of the Ancestry gem for inspiring the list of accessors and scopes

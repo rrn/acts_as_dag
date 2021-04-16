@@ -13,6 +13,7 @@ Gem::Specification.new do |s|
   s.homepage = 'http://github.com/rrn/acts_as_dag'
   s.summary = 'Adds directed acyclic graph functionality to ActiveRecord.'
   s.authors = ['Nicholas Jakobsen', 'Ryan Wallace']
+  s.license = 'Apache 2.0'
 
   s.add_dependency('activerecord', '>= 5.1')
   s.add_development_dependency('rspec', '~> 3.2')
