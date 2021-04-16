@@ -1,4 +1,6 @@
 $LOAD_PATH << File.join(File.dirname(__FILE__), '..', 'lib')
+require 'rspec'
+require 'pry'
 require 'active_record'
 require 'logger'
 require 'acts_as_dag'

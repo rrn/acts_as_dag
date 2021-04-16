@@ -5,6 +5,15 @@ describe 'acts_as_dag' do
     klass.destroy_all # Because we're using sqlite3 and it doesn't support transactional specs (afaik)
   end
 
+  # Merge the given acts_as_dag_options for the duration of the block
+  def with_options(klass, options)
+    old_options = klass.acts_as_dag_options
+    klass.acts_as_dag_options = klass.acts_as_dag_options.merge(options)
+    yield
+  ensure
+    klass.acts_as_dag_options = old_options
+  end
+
   shared_examples_for "DAG Model" do
     let (:grandpa) { klass.create(:name => 'grandpa') }
     let (:dad) { klass.create(:name => 'dad') }
@@ -224,6 +233,12 @@ describe 'acts_as_dag' do
         expect(mom.children).to include(suzy, billy)
       end
 
+      it "ignores children that are already added" do
+        mom.add_child(suzy)
+        mom.add_child(suzy)
+        expect(mom.children).not_to be_many
+      end
+
       it "accepts multiple arguments, adding each as a child" do
         mom.add_child(suzy, billy)
         expect(mom.children).to include(suzy, billy)
@@ -232,6 +247,10 @@ describe 'acts_as_dag' do
       it "accepts an array of records, adding each as a child" do
         mom.add_child([suzy, billy])
         expect(mom.children).to include(suzy, billy)
+      end
+
+      it "don't require manually uncaching of child association to detect the addition" do
+        expect{ mom.add_child(suzy) }.to change{ mom.children.to_a }
       end
     end
 
@@ -258,6 +277,12 @@ describe 'acts_as_dag' do
         expect(suzy.parents).to include(mom, dad)
       end
 
+      it "ignores parents that are already added" do
+        suzy.add_parent(mom)
+        suzy.add_parent(mom)
+        expect(suzy.parents).not_to be_many
+      end
+
       it "accepts multiple arguments, adding each as a parent" do
         suzy.add_parent(mom, dad)
         expect(suzy.parents).to include(mom, dad)
@@ -266,6 +291,14 @@ describe 'acts_as_dag' do
       it "accepts an array of records, adding each as a parent" do
         suzy.add_parent([mom, dad])
         expect(suzy.parents).to include(mom, dad)
+      end
+
+      it "removes record from roots" do
+        expect{ mom.add_child(suzy) }.to change{ suzy.root? }.from(true).to(false)
+      end
+
+      it "don't require manually uncaching of child association to detect the addition" do
+        expect{ suzy.add_parent(dad) }.to change{ suzy.parents.to_a }
       end
     end
 
@@ -552,6 +585,11 @@ describe 'acts_as_dag' do
         expect(suzy.ancestors).to eq([mom, dad])
       end
 
+      it "ignores duplicate parents" do
+        suzy.parents = [mom, mom]
+        expect(suzy.parents).not_to be_many
+      end
+
       it "unsets the receiver's parents when given an empty array" do
         suzy.parents = []
         expect(suzy.parents).to contain_exactly
@@ -560,6 +598,24 @@ describe 'acts_as_dag' do
       it "updates the ancestors of the receivers when given an empty array" do
         suzy.parents = []
         expect(suzy.ancestors).to contain_exactly
+      end
+
+      it "makes the receiver a root when set passed a nil array" do
+        suzy.add_parent(mom)
+        suzy.parents = [nil]
+        expect(suzy).to be_root
+      end
+
+      it "makes the receiver a root when set passed an empty array" do
+        suzy.add_parent(mom)
+        suzy.parents = []
+        expect(suzy).to be_root
+      end
+
+      it "unroots the receiver when set passed a non-empty array" do
+        suzy.parents = []
+        suzy.parents = [mom]
+        expect(suzy).not_to be_root
       end
     end
 
@@ -785,6 +841,68 @@ describe 'acts_as_dag' do
       it "doesn't mark returned records as readonly" do
         mom.add_child(suzy)
         expect(klass.parent_records.none?(&:readonly?)).to be_truthy
+      end
+    end
+
+    describe '#distance_to' do
+      it 'returns the distance between the receiver and the given record' do
+        mom.add_child(suzy)
+        mom.add_parent(grandpa)
+
+        expect(suzy.distance_to(grandpa)).to eq(2)
+      end
+
+      it 'returns the minimum distance between the receiver and the given record when multiple paths exist' do
+        mom.add_child(suzy)
+        dad.add_child(suzy)
+        billy.add_child(mom)
+        grandpa.add_child(dad, billy)
+
+        expect(suzy.distance_to(grandpa)).to eq(2)
+      end
+
+      it 'returns nil if no path exists between the receiver and the given record' do
+        expect(mom.distance_to(suzy)).to eq(nil)
+      end
+
+      it 'returns correct distance if the receiver is indirectly linked to, but is not an ancestor or descendant of the given record' do
+        pending
+        mom.add_child(suzy)
+        mom.add_child(billy)
+
+        expect(billy.distance_to(suzy)).to eq(2)
+      end
+    end
+
+    describe "options" do
+      context ":allow_root_and_parent => true" do
+        around do |example|
+          with_options(klass, :allow_root_and_parent => true) do
+            example.run
+          end
+        end
+
+        it 'modifies ::link so child remains a root node when it gains a parent' do
+          expect{ mom.add_child(suzy) }.not_to change{ suzy.root? }
+        end
+
+        it "modifies #make_root so parents are retained" do
+          suzy.add_parent(mom)
+          expect{ suzy.make_root }.not_to change{ suzy.parents }
+        end
+
+        it "allows #parents= to make the receiver a root and a child of another record" do
+          suzy.parents = [nil, mom]
+          expect(suzy).to be_root
+          expect(suzy.parents).to contain_exactly(mom)
+        end
+
+        it "modifies the parents relation shovel operator to make the record a root when passed a nil" do
+          suzy.parents = [mom]
+          suzy.reload
+          suzy.parents << nil
+          expect(suzy).to be_root
+        end
       end
     end
 

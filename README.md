@@ -76,6 +76,7 @@ descendants      Scopes the model on direct and indirect children of the record
 descendant_ids   Returns a list of a descendant ids
 subtree          Scopes the model on descendants and itself
 subtree_ids      Returns a list of all ids in the record's subtree
+distance_to      Returns the minimum number of ancestors/descendants between two records, e.g. child.distance_to(grandpa) #=> 2
 ```
 
 ## Scopes
@@ -83,11 +84,11 @@ subtree_ids      Returns a list of all ids in the record's subtree
 ```
 roots                   Nodes without parents
 leaves                  Nodes without children
-ancestors_of(node)      Ancestors of node, node can be either a record or an id
-path_of(node)           Node and ancestors of node, node can be either a record or an id
-children_of(node)       Children of node, node can be either a record or an id
-descendants_of(node)    Descendants of node, node can be either a record or an id
-subtree_of(node)        Subtree of node, node can be either a record or an id
+ancestors_of(node)      Ancestors of node, node can be either a record, id, scope, or array
+children_of(node)       Children of node, node can be either a record, id, scope, or array
+descendants_of(node)    Descendants of node, node can be either a record, id, scope, or array
+path_of(node)           Node and ancestors of node, node can be either a record, id, scope, or array
+subtree_of(node)        Subtree of node, node can be either a record, id, scope, or array
 ```
 
 
@@ -135,7 +136,11 @@ siblings_of(node)       Siblings of node, node can be either a record or an id
 ```
 
 ### Remove deprecated functionality
-This gem was extracted from an early project. Functionality required for that project found its way into the gem, but is only incidentally related to the generation of the DAG. This has been moved to the ActsAsDag::Deprecated module, and will be removed in a future version.
+This gem was extracted from an early project. Functionality required for that project found its way into the gem, but is only tangentially related to the generation of the DAG. This has been moved to the ActsAsDag::Deprecated module, and will be removed in a future version.
+
+## Tests
+
+`bundle exec rspec` to run tests.
 
 ## Credits
 
