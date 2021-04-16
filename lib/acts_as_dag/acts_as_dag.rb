@@ -194,7 +194,8 @@ module ActsAsDAG
                                   .where('ancestor_id = :id OR descendant_id = :id', :id => id)
                                   .where('ancestor_id != descendant_id')                        # Don't include self
 
-      self.class.joins("JOIN (#{lineage_links.to_sql}) lineage_links ON #{self.class.table_name}.id = lineage_links.id").order("CASE ancestor_id WHEN #{id} THEN distance ELSE -distance END") # Ensure the links are orders furthest ancestor to furthest descendant
+      self.class.joins("JOIN (#{lineage_links.to_sql}) lineage_links ON #{self.class.table_name}.id = lineage_links.id")
+                .order(Arel.sql("CASE ancestor_id WHEN #{id} THEN distance ELSE -distance END")) # Ensure the links are orders furthest ancestor to furthest descendant
     end
 
     def distance_to(other)
