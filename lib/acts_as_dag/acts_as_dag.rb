@@ -17,8 +17,8 @@ module ActsAsDAG
       class_eval <<-RUBY
         class ::#{options[:link_class]} < ActsAsDAG::AbstractLink
           self.table_name = '#{options[:link_table]}'
-          belongs_to :parent, :class_name => '#{self.name}', :foreign_key => :parent_id, :inverse_of => :child_links
-          belongs_to :child, :class_name => '#{self.name}', :foreign_key => :child_id, :inverse_of => :parent_links
+          belongs_to :parent, :class_name => '#{self.name}', :foreign_key => :parent_id, :inverse_of => :child_links, :optional => true
+          belongs_to :child, :class_name => '#{self.name}', :foreign_key => :child_id, :inverse_of => :parent_links, :optional => true
 
           after_save Proc.new {|link| HelperMethods.update_transitive_closure_for_new_link(link) }
           after_destroy Proc.new {|link| HelperMethods.update_transitive_closure_for_destroyed_link(link) }
@@ -28,8 +28,8 @@ module ActsAsDAG
 
         class ::#{options[:descendant_class]} < ActsAsDAG::AbstractDescendant
           self.table_name = '#{options[:descendant_table]}'
-          belongs_to :ancestor, :class_name => '#{self.name}', :foreign_key => :ancestor_id
-          belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => :descendant_id
+          belongs_to :ancestor, :class_name => '#{self.name}', :foreign_key => :ancestor_id, :optional => true
+          belongs_to :descendant, :class_name => '#{self.name}', :foreign_key => :descendant_id, :optional => true
 
           def node_class; #{self.name} end
         end
@@ -192,7 +192,8 @@ module ActsAsDAG
                                   .where('ancestor_id = :id OR descendant_id = :id', :id => id)
                                   .where('ancestor_id != descendant_id')                        # Don't include self
 
-      self.class.joins("JOIN (#{lineage_links.to_sql}) lineage_links ON #{self.class.table_name}.id = lineage_links.id").order("CASE ancestor_id WHEN #{id} THEN distance ELSE -distance END") # Ensure the links are orders furthest ancestor to furthest descendant
+      self.class.joins("JOIN (#{lineage_links.to_sql}) lineage_links ON #{self.class.table_name}.id = lineage_links.id")
+                .order(Arel.sql("CASE ancestor_id WHEN #{id} THEN distance ELSE -distance END")) # Ensure the links are orders furthest ancestor to furthest descendant
     end
 
     def distance_to(other)

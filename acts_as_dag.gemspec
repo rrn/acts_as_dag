@@ -15,9 +15,10 @@ Gem::Specification.new do |s|
   s.authors = ['Nicholas Jakobsen', 'Ryan Wallace']
   s.license = 'Apache 2.0'
 
-  s.add_dependency('activerecord', '>= 5.1')
+  s.add_dependency('activerecord')
   s.add_development_dependency('rspec', '~> 3.2')
   s.add_development_dependency('sqlite3')
+  s.add_development_dependency('appraisal')
 
   s.require_paths = ["lib"]
   s.files = Dir.glob("{lib,spec}/**/*") + %w(LICENSE README.md)
