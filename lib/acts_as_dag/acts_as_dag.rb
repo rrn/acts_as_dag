@@ -299,8 +299,12 @@ module ActsAsDAG
       # If we're passing :parents or :children to a new record as part of #create, transitive closure on the nested records will
       # be updated before the new record's after save calls :initialize_dag. We ensure it's been initalized before we start querying
       # its descendant_table or it won't appear as an ancestor or descendant until too late.
-      new_link.parent.send(:initialize_dag) if new_link.parent && new_link.parent.saved_change_to_id?
-      new_link.child.send(:initialize_dag) if new_link.child && new_link.child.saved_change_to_id?
+      #
+      # saved_change_to_id? would be the preferred way to check for new records in this callback but it's not
+      # available in Rails 5.0 (not until 5.1.7 - https://apidock.com/rails/ActiveRecord/AttributeMethods/Dirty/saved_change_to_attribute%3F)
+      # and we still want to support Rails 5.0
+      new_link.parent.send(:initialize_dag) if new_link.parent && (new_link.parent.id_changed? || new_link.parent.id_previously_changed?)
+      new_link.child.send(:initialize_dag) if new_link.child && (new_link.child.id_changed? || new_link.child.id_previously_changed?)
 
       # FIXME: There is some bug that causes link to set the association, but not the foreign key when multiple parents are assigned simultaneously during create
       new_link.child_id = new_link.child.id if new_link.child
