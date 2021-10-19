@@ -65,15 +65,23 @@ remove_child    Removes the given record as a child of the receiver. Accepts a s
 ```
 parent           Returns the parent of the record, nil for a root node
 parent_id        Returns the id of the parent of the record, nil for a root node
+parent_of?       Returns true if the record is the parent of the given node, false otherwise
+parents?         Returns true if the record has any parents, false otherwise
 root?            Returns true if the record is a root node, false otherwise
 ancestor_ids     Returns a list of ancestor ids, starting with the root id and ending with the parent id
 ancestors        Scopes the model on ancestors of the record
+ancestor_of?     Returns true if the record is the ancestor of the given node, false otherwise
+ancestors?       Returns true if the record has any ancestors, false otherwise
 path_ids         Returns a list the path ids, starting with the root id and ending with the node's own id
 path             Scopes model on path records of the record
 children         Scopes the model on children of the record
 child_ids        Returns a list of child ids
+child_of?        Returns true if the record is the child of the given node, false otherwise
+children?        Returns true if the record has any children, false otherwise
 descendants      Scopes the model on direct and indirect children of the record
 descendant_ids   Returns a list of a descendant ids
+descendant_of?   Returns true if the record is the descendant of the given node, false otherwise
+descendants?     Returns true if the record has any descendants, false otherwise
 subtree          Scopes the model on descendants and itself
 subtree_ids      Returns a list of all ids in the record's subtree
 distance_to      Returns the minimum number of ancestors/descendants between two records, e.g. child.distance_to(grandpa) #=> 2

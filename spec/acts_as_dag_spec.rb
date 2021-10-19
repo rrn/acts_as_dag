@@ -316,6 +316,17 @@ describe 'acts_as_dag' do
       end
     end
 
+    describe '#ancestors?' do
+      it "returns true if the record has any ancestors" do
+        mom.add_child(billy)
+        expect(billy.ancestors?).to be_truthy
+      end
+
+      it "returns false if the record has no ancestors" do
+        expect(billy.ancestors?).to be_falsey
+      end
+    end
+
     describe '#descendant_of?' do
       it "returns true if the record is a descendant of the receiver" do
         grandpa.add_child(mom)
@@ -327,6 +338,17 @@ describe 'acts_as_dag' do
         grandpa.add_child(dad)
         mom.add_child(billy)
         expect(billy.descendant_of?(grandpa)).to be_falsey
+      end
+    end
+
+    describe '#descendants?' do
+      it "returns true if the record has any descendants" do
+        mom.add_child(billy)
+        expect(mom.descendants?).to be_truthy
+      end
+
+      it "returns false if the record has no descendants" do
+        expect(mom.descendants?).to be_falsey
       end
     end
 
@@ -342,6 +364,17 @@ describe 'acts_as_dag' do
       end
     end
 
+    describe '#children?' do
+      it "returns true if the record has any children" do
+        mom.add_child(billy)
+        expect(mom.children?).to be_truthy
+      end
+
+      it "returns false if the record has no children" do
+        expect(mom.children?).to be_falsey
+      end
+    end
+
     describe '#parent_of?' do
       it "returns true if the record is a parent of the receiver" do
         mom.add_child(billy)
@@ -351,6 +384,17 @@ describe 'acts_as_dag' do
       it "returns false if the record is not an parent of the receiver" do
         mom.add_child(billy)
         expect(mom.parent_of?(suzy)).to be_falsey
+      end
+    end
+
+    describe '#parents?' do
+      it "returns true if the record has any parents" do
+        mom.add_child(billy)
+        expect(billy.parents?).to be_truthy
+      end
+
+      it "returns false if the record has no parents" do
+        expect(billy.children?).to be_falsey
       end
     end
 

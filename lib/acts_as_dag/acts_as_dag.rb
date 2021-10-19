@@ -160,9 +160,17 @@ module ActsAsDAG
       category.children.exists?(id)
     end
 
+    def children?
+      child_ids.present?
+    end
+
     # Returns true if the category's parents include *self*
     def parent_of?(category, options = {})
       category.parents.exists?(id)
+    end
+
+    def parents?
+      parent_ids.present?
     end
 
     # Returns true if the category's descendants include *self*
@@ -170,9 +178,17 @@ module ActsAsDAG
       category.descendants.exists?(id)
     end
 
+    def descendants?
+      descendant_ids.present?
+    end
+
     # Returns true if the category's descendants include *self*
     def ancestor_of?(category, options = {})
       category.ancestors.exists?(id)
+    end
+
+    def ancestors?
+      ancestor_ids.present?
     end
 
     # Returns the class used for links
