@@ -149,27 +149,15 @@ siblings_of(node)       Siblings of node, node can be either a record or an id
 
 ## Testing
 
-We use the [Appraisal gem](https://github.com/thoughtbot/appraisal) to test with multiple Rails versions.
+There are multiple gemfiles available for testing against different Rails versions.  Set `BUNDLE_GEMFILE` to target them, e.g.
 
-```
+```bash
 bundle install
-bundle exec appraisal install
+BUNDLE_GEMFILE=gemfiles/rails_7.gemfile bundle install
+BUNDLE_GEMFILE=gemfiles/rails_7.gemfile bundle exec rspec
 ```
 
-Run individual specs:
-
-```
-bundle exec appraisal rails-4 rspec
-bundle exec appraisal rails-5 rspec
-```
-
-Run all specs:
-
-```
-bundle exec appraisal rspec
-```
 
 ## Credits
 
 Thank you to the developers of the Ancestry gem for inspiring the list of accessors and scopes
-
