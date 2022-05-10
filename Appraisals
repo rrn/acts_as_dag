@@ -16,3 +16,7 @@ end
 appraise "rails-6" do
   gem "activerecord", "~> 6"
 end
+
+appraise "rails-7" do
+  gem "activerecord", "~> 7"
+end
